@@ -127,6 +127,7 @@ function buildCliHandlers(): Map<string, CommandHandler> {
       const state = windowStates.get(win.id)
       state?.ptyManager.rename(sessionId, name)
       win.webContents.send('session:renamed', sessionId, name)
+      schedulePersist(win.id)
     }
     return { ok: true }
   })
@@ -153,6 +154,7 @@ function buildCliHandlers(): Map<string, CommandHandler> {
       const info: SessionContext = { title, summary, lastAction, actionItem: actionItem || undefined, updatedAt: Date.now(), contextPercent: existingContextPercent, timeline }
       state?.ptyManager.setSessionInfo(sessionId, info)
       win.webContents.send('session:info-updated', sessionId, info)
+      schedulePersist(win.id)
     }
     return { ok: true }
   })
@@ -166,6 +168,23 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     const win = findWindowForProject(projectPath)
     if (win && !win.isDestroyed()) {
       win.webContents.send('session:context-updated', sessionId, clamped)
+    }
+    return { ok: true }
+  })
+
+  handlers.set('conversation', (p) => {
+    const projectPath = p.projectPath as string
+    const sessionId = p.sessionId as string
+    const conversationId = p.conversationId as string
+    if (!projectPath || !sessionId || !conversationId) {
+      return { ok: false, error: 'Missing projectPath, sessionId, or conversationId' }
+    }
+    const win = findWindowForProject(projectPath)
+    if (win && !win.isDestroyed()) {
+      const state = windowStates.get(win.id)
+      state?.ptyManager.setConversationId(sessionId, conversationId)
+      win.webContents.send('session:conversation-updated', sessionId, conversationId)
+      schedulePersist(win.id)
     }
     return { ok: true }
   })
@@ -890,11 +909,20 @@ function detectClaudeSessionId(shellPid: number): string | null {
 function saveWindowSessionState(state: WindowState) {
   if (!state.projectPath) return
   const sessions = state.ptyManager.getAllSessions()
-  if (sessions.length === 0) return
+  const allSaved = loadSavedSessions()
+  const filtered = allSaved.filter(s => s.projectPath !== state.projectPath)
+
+  // No sessions left: drop the saved entry so reopening doesn't restore ghosts.
+  if (sessions.length === 0) {
+    saveSavedSessions(filtered)
+    return
+  }
 
   const savedSessions: SavedSession[] = sessions.map((s, index) => {
-    let claudeSessionId: string | undefined
-    if (s.running && s.pid) {
+    // Prefer the conversation id we already know (reported by the Claude hook or
+    // detected by the periodic poller); only fall back to a fresh process scan.
+    let claudeSessionId = s.conversationId
+    if (!claudeSessionId && s.running && s.pid) {
       claudeSessionId = detectClaudeSessionId(s.pid) ?? undefined
     }
     return {
@@ -908,8 +936,6 @@ function saveWindowSessionState(state: WindowState) {
   })
 
   const activeSession = sessions.find(s => s.id === state.activeSessionId)
-  const allSaved = loadSavedSessions()
-  const filtered = allSaved.filter(s => s.projectPath !== state.projectPath)
   filtered.push({
     projectPath: state.projectPath,
     sessions: savedSessions,
@@ -918,6 +944,45 @@ function saveWindowSessionState(state: WindowState) {
   })
   saveSavedSessions(filtered)
 }
+
+// Debounced persistence: save a window's session state shortly after any change
+// (create / delete / rename / info / conversation update) so a crash or force-quit
+// never loses more than the debounce window.
+const persistTimers = new Map<number, NodeJS.Timeout>()
+function schedulePersist(winId: number) {
+  const existing = persistTimers.get(winId)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    persistTimers.delete(winId)
+    const state = windowStates.get(winId)
+    if (state) saveWindowSessionState(state)
+  }, 800)
+  timer.unref?.()
+  persistTimers.set(winId, timer)
+}
+
+// Periodically reconcile each running session's Claude conversation id from the
+// live ~/.claude/sessions/{pid}.json files. This is the always-on fallback that
+// works even without the SessionStart hook installed.
+function detectConversationIds() {
+  for (const [winId, state] of windowStates) {
+    const win = BrowserWindow.fromId(winId)
+    if (!win || win.isDestroyed()) continue
+    let changed = false
+    for (const s of state.ptyManager.getAllSessions()) {
+      if (!s.running || !s.pid) continue
+      const detected = detectClaudeSessionId(s.pid)
+      if (detected && detected !== s.conversationId) {
+        state.ptyManager.setConversationId(s.id, detected)
+        win.webContents.send('session:conversation-updated', s.id, detected)
+        changed = true
+      }
+    }
+    if (changed) schedulePersist(winId)
+  }
+}
+const conversationDetectInterval = setInterval(detectConversationIds, 15_000)
+conversationDetectInterval.unref?.()
 
 // --- Window tiling ---
 
@@ -1713,6 +1778,7 @@ function setupIpcHandlers() {
         }
       },
     })
+    schedulePersist(win.id)
     return id
   })
 
@@ -1750,6 +1816,8 @@ function setupIpcHandlers() {
 
   ipcMain.handle('session:rename', (event, id: string, name: string) => {
     getStateForEvent(event)?.ptyManager.rename(id, name)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) schedulePersist(win.id)
   })
 
   ipcMain.handle('config:get', (event) => {
@@ -2487,6 +2555,8 @@ function setupIpcHandlers() {
 
   ipcMain.handle('session:delete', (event, id: string) => {
     getStateForEvent(event)?.ptyManager.removeSession(id)
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) schedulePersist(win.id)
   })
 }
 

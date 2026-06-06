@@ -10,6 +10,7 @@ interface PtySession {
   cwd: string
   running: boolean
   info?: SessionContext
+  conversationId?: string
   createdAt: number
 }
 
@@ -210,6 +211,11 @@ export class PtyManager {
     if (session) session.info = info
   }
 
+  setConversationId(id: string, conversationId: string) {
+    const session = this.sessions.get(id)
+    if (session) session.conversationId = conversationId
+  }
+
   getPid(id: string): number | null {
     return this.sessions.get(id)?.pty?.pid ?? null
   }
@@ -245,7 +251,7 @@ export class PtyManager {
     return () => { this.extraExitListeners.get(id)?.delete(listener) }
   }
 
-  getAllSessions(): Array<{ id: string; name: string; command?: string; running: boolean; pid: number | null; info?: SessionContext; createdAt: number }> {
+  getAllSessions(): Array<{ id: string; name: string; command?: string; running: boolean; pid: number | null; info?: SessionContext; conversationId?: string; createdAt: number }> {
     return Array.from(this.sessions.values()).map(s => ({
       id: s.id,
       name: s.name,
@@ -253,6 +259,7 @@ export class PtyManager {
       running: s.running,
       pid: s.pty?.pid ?? null,
       info: s.info,
+      conversationId: s.conversationId,
       createdAt: s.createdAt,
     }))
   }

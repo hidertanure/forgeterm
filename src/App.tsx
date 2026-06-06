@@ -109,7 +109,7 @@ function App() {
             }
 
             const id = await window.forgeterm.createSession(s.name, command, idle)
-            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info } : null
+            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
           })
         )
         for (const r of results) {
@@ -117,6 +117,9 @@ function App() {
             addSession(r)
             if (r.info) {
               useSessionStore.getState().setSessionInfo(r.id, r.info)
+            }
+            if (r.conversationId) {
+              useSessionStore.getState().setConversationId(r.id, r.conversationId)
             }
           }
         }
@@ -199,7 +202,10 @@ function App() {
     const unsubContext = window.forgeterm.onContextUpdated((sessionId, percent) => {
       useSessionStore.getState().setContextPercent(sessionId, percent)
     })
-    return () => { unsubRename(); unsubInfo(); unsubContext() }
+    const unsubConversation = window.forgeterm.onConversationUpdated((sessionId, conversationId) => {
+      useSessionStore.getState().setConversationId(sessionId, conversationId)
+    })
+    return () => { unsubRename(); unsubInfo(); unsubContext(); unsubConversation() }
   }, [])
 
   // Listen for session exits
@@ -275,13 +281,14 @@ function App() {
               idle = false
             }
             const id = await window.forgeterm.createSession(s.name, command, idle)
-            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info } : null
+            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
           })
         )
         for (const r of results) {
           if (r) {
             addSession(r)
             if (r.info) useSessionStore.getState().setSessionInfo(r.id, r.info)
+            if (r.conversationId) useSessionStore.getState().setConversationId(r.id, r.conversationId)
           }
         }
         if (savedState.activeSessionName) {
@@ -487,6 +494,20 @@ function App() {
     }
   }, [createSession, config])
 
+  const handleResumeSession = useCallback(async (conversationId: string, name: string) => {
+    const args = config?.claudeResumeArgs && config.claudeResumeArgs.length > 0
+      ? config.claudeResumeArgs
+      : ['--dangerously-skip-permissions']
+    const command = `claude ${args.join(' ')} --resume ${conversationId}`
+    const resumeName = `${name} (resume)`
+    const id = await window.forgeterm.createSession(resumeName, command)
+    if (id) {
+      addSession({ id, name: resumeName, command, running: true })
+      setActive(id)
+    }
+    setInfoPanelSessionId(null)
+  }, [config, addSession, setActive])
+
   const handleSaveTheme = useCallback(async (updatedConfig: ForgeTermConfig) => {
     setShowThemeEditor(false)
     await window.forgeterm.saveConfig(updatedConfig)
@@ -611,6 +632,7 @@ function App() {
               session={panelSession}
               accentColor={accentColor}
               onClose={() => setInfoPanelSessionId(null)}
+              onResume={handleResumeSession}
             />
           ) : null
         })()}

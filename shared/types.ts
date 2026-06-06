@@ -330,6 +330,7 @@ export interface ForgeTermAPI {
   onSessionRenamed: (callback: (sessionId: string, name: string) => void) => () => void
   onSessionInfoUpdated: (callback: (sessionId: string, info: SessionContext) => void) => () => void
   onContextUpdated: (callback: (sessionId: string, percent: number) => void) => () => void
+  onConversationUpdated: (callback: (sessionId: string, conversationId: string) => void) => () => void
   getSavedSessions: () => Promise<SavedWindowState | null>
   clearSavedSessions: () => Promise<void>
   deleteSession: (id: string) => Promise<void>

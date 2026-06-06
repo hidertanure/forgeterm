@@ -244,6 +244,31 @@ USAGE
   check_response "$response" true || exit 1
 }
 
+cmd_conversation() {
+  if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    cat <<'USAGE'
+Usage: ft conversation <id>
+
+Associate the current session with a Claude conversation (session) ID so
+ForgeTerm can persist it and offer a one-click "Resume in Claude" button in
+the session info panel. Usually called automatically by a Claude SessionStart
+hook, but you can also set it manually.
+
+Examples:
+  ft conversation c490f302-9351-4219-a9c0-4b104bce79d4
+USAGE
+    exit 0
+  fi
+  local conversation_id="$1"
+  if [ -z "$conversation_id" ]; then echo "Usage: ft conversation <id>" >&2; exit 1; fi
+  require_session
+
+  local json="{\"command\":\"conversation\",\"conversationId\":$(json_string "$conversation_id"),\"projectPath\":$(json_string "$FORGETERM_PROJECT_PATH"),\"sessionId\":$(json_string "$FORGETERM_SESSION_ID")}"
+  local response
+  response=$(send_to_socket "$json") || exit 1
+  check_response "$response" true || exit 1
+}
+
 cmd_open() {
   if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "Usage: ft open <path> - Open a project in ForgeTerm"
@@ -733,6 +758,7 @@ Direct commands:
   rename "name"           Rename current session
   info                    Update session info card
   context <0-100>         Report context window usage %
+  conversation <id>       Link session to a Claude conversation ID
   open [path]             Open a project
   open-workspace [path]   Open folder as workspace
   list [--json]           List recent projects
@@ -756,6 +782,7 @@ case "${1:-}" in
   rename)    shift; cmd_rename "$@" ;;
   info)      shift; cmd_info "$@" ;;
   context)   shift; cmd_context "$@" ;;
+  conversation) shift; cmd_conversation "$@" ;;
   open)      shift; cmd_open "$@" ;;
   list)      shift; cmd_list "$@" ;;
   dashboard) send_command '{"command":"dashboard"}' ;;

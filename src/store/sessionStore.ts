@@ -9,6 +9,7 @@ export interface Session {
   activityStatus: SessionActivityStatus
   info?: SessionContext
   contextPercent?: number
+  conversationId?: string
 }
 
 interface SessionStore {
@@ -20,6 +21,7 @@ interface SessionStore {
   setRunning: (id: string, running: boolean) => void
   renameSession: (id: string, name: string) => void
   setSessionInfo: (id: string, info: SessionContext) => void
+  setConversationId: (id: string, conversationId: string) => void
   setContextPercent: (id: string, percent: number) => void
   setActivityStatus: (id: string, status: SessionActivityStatus) => void
   markSessionWorking: (id: string) => void
@@ -74,6 +76,13 @@ export const useSessionStore = create<SessionStore>((set) => ({
     set((state) => ({
       sessions: state.sessions.map((s) =>
         s.id === id ? { ...s, info, contextPercent: info.contextPercent ?? s.contextPercent } : s,
+      ),
+    })),
+
+  setConversationId: (id, conversationId) =>
+    set((state) => ({
+      sessions: state.sessions.map((s) =>
+        s.id === id ? { ...s, conversationId } : s,
       ),
     })),
 

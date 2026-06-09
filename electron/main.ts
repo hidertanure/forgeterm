@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, dialog, shell, sc
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
-import { execSync } from 'node:child_process'
+import { execSync, execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { PtyManager } from './ptyManager'
 import type { ForgeTermConfig, RecentProject, Workspace, ImportResult, FavoriteTheme, DetectedEditor, UpdateInfo, SessionTemplate, SessionStatusReport, SavedSession, SavedWindowState, SessionContext, HistoricalSession, SessionHistoryFilter, DashboardState, DashboardProject, DashboardSession, DashboardWorkspace } from '../shared/types'
 import crypto from 'node:crypto'
@@ -879,31 +880,48 @@ function saveSavedSessions(states: SavedWindowState[]) {
   fs.writeFileSync(getSavedSessionsPath(), JSON.stringify(states, null, 2), 'utf-8')
 }
 
-function detectClaudeSessionId(shellPid: number): string | null {
+const execFileAsync = promisify(execFile)
+
+// Build a pid -> child-pids map from a single `ps` snapshot. This replaces a
+// recursive, synchronous `pgrep -P` spawn per process in every session tree
+// (which blocked the main event loop for seconds on busy machines) with one
+// async spawn for the whole app.
+async function snapshotProcessTree(): Promise<Map<number, number[]>> {
+  const children = new Map<number, number[]>()
+  try {
+    const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid='], { timeout: 4000 })
+    for (const line of stdout.split('\n')) {
+      const m = line.trim().match(/^(\d+)\s+(\d+)$/)
+      if (!m) continue
+      const pid = Number(m[1])
+      const ppid = Number(m[2])
+      const arr = children.get(ppid)
+      if (arr) arr.push(pid)
+      else children.set(ppid, [pid])
+    }
+  } catch { /* `ps` unavailable; caller treats an empty tree as "nothing found" */ }
+  return children
+}
+
+// Walk a shell's process subtree in memory (no spawning) looking for a child
+// Claude process that has recorded ~/.claude/sessions/{pid}.json, and return its
+// sessionId.
+function findClaudeSessionIdInTree(shellPid: number, childMap: Map<number, number[]>): string | null {
   const claudeSessionsDir = path.join(app.getPath('home'), '.claude', 'sessions')
-  const checkPids = (parentPid: number): string | null => {
-    let childPids: number[]
+  const stack = [...(childMap.get(shellPid) ?? [])]
+  const seen = new Set<number>()
+  while (stack.length > 0) {
+    const pid = stack.pop() as number
+    if (seen.has(pid)) continue
+    seen.add(pid)
     try {
-      const output = execSync(`pgrep -P ${parentPid}`, { encoding: 'utf-8', timeout: 2000 })
-      childPids = output.trim().split('\n').map(Number).filter(Boolean)
-    } catch {
-      return null
-    }
-    for (const pid of childPids) {
-      const sessionFile = path.join(claudeSessionsDir, `${pid}.json`)
-      try {
-        const data = JSON.parse(fs.readFileSync(sessionFile, 'utf-8'))
-        if (data.sessionId) return data.sessionId as string
-      } catch { /* not a Claude session */ }
-    }
-    // Check grandchildren
-    for (const pid of childPids) {
-      const result = checkPids(pid)
-      if (result) return result
-    }
-    return null
+      const data = JSON.parse(fs.readFileSync(path.join(claudeSessionsDir, `${pid}.json`), 'utf-8'))
+      if (data.sessionId) return data.sessionId as string
+    } catch { /* not a Claude session */ }
+    const kids = childMap.get(pid)
+    if (kids) stack.push(...kids)
   }
-  return checkPids(shellPid)
+  return null
 }
 
 function saveWindowSessionState(state: WindowState) {
@@ -918,22 +936,16 @@ function saveWindowSessionState(state: WindowState) {
     return
   }
 
-  const savedSessions: SavedSession[] = sessions.map((s, index) => {
-    // Prefer the conversation id we already know (reported by the Claude hook or
-    // detected by the periodic poller); only fall back to a fresh process scan.
-    let claudeSessionId = s.conversationId
-    if (!claudeSessionId && s.running && s.pid) {
-      claudeSessionId = detectClaudeSessionId(s.pid) ?? undefined
-    }
-    return {
-      name: s.name,
-      command: s.command,
-      wasRunning: s.running,
-      claudeSessionId,
-      info: s.info,
-      order: index,
-    }
-  })
+  const savedSessions: SavedSession[] = sessions.map((s, index) => ({
+    name: s.name,
+    command: s.command,
+    wasRunning: s.running,
+    // Conversation id is kept current by the periodic poller and the SessionStart
+    // hook; never do a blocking process scan here (this runs on a debounce and at quit).
+    claudeSessionId: s.conversationId,
+    info: s.info,
+    order: index,
+  }))
 
   const activeSession = sessions.find(s => s.id === state.activeSessionId)
   filtered.push({
@@ -964,24 +976,49 @@ function schedulePersist(winId: number) {
 // Periodically reconcile each running session's Claude conversation id from the
 // live ~/.claude/sessions/{pid}.json files. This is the always-on fallback that
 // works even without the SessionStart hook installed.
-function detectConversationIds() {
+//
+// Performance: only sessions whose id we don't yet know are scanned (a Claude
+// session id is stable for the life of its process, and the SessionStart hook
+// reports restarts authoritatively), and the whole reconcile uses a single async
+// `ps` snapshot rather than a recursive synchronous `pgrep` walk per session, so
+// it never blocks the main process event loop.
+let detectingConversationIds = false
+async function detectConversationIds() {
+  if (detectingConversationIds) return
+
+  // Gather running sessions that still need an id; skip ones we already know.
+  const pending: Array<{ winId: number; win: BrowserWindow; sessionId: string; shellPid: number }> = []
   for (const [winId, state] of windowStates) {
     const win = BrowserWindow.fromId(winId)
     if (!win || win.isDestroyed()) continue
-    let changed = false
     for (const s of state.ptyManager.getAllSessions()) {
-      if (!s.running || !s.pid) continue
-      const detected = detectClaudeSessionId(s.pid)
-      if (detected && detected !== s.conversationId) {
-        state.ptyManager.setConversationId(s.id, detected)
-        win.webContents.send('session:conversation-updated', s.id, detected)
-        changed = true
+      if (!s.running || !s.pid || s.conversationId) continue
+      pending.push({ winId, win, sessionId: s.id, shellPid: s.pid })
+    }
+  }
+  if (pending.length === 0) return
+
+  detectingConversationIds = true
+  try {
+    const childMap = await snapshotProcessTree()
+    const changedWins = new Set<number>()
+    for (const { winId, win, sessionId, shellPid } of pending) {
+      if (win.isDestroyed()) continue
+      const state = windowStates.get(winId)
+      if (!state) continue
+      const detected = findClaudeSessionIdInTree(shellPid, childMap)
+      if (detected) {
+        state.ptyManager.setConversationId(sessionId, detected)
+        win.webContents.send('session:conversation-updated', sessionId, detected)
+        changedWins.add(winId)
       }
     }
-    if (changed) schedulePersist(winId)
+    for (const winId of changedWins) schedulePersist(winId)
+  } finally {
+    detectingConversationIds = false
   }
 }
-const conversationDetectInterval = setInterval(detectConversationIds, 15_000)
+const conversationDetectInterval = setInterval(() => { void detectConversationIds() }, 15_000)
 conversationDetectInterval.unref?.()
 
 // --- Window tiling ---

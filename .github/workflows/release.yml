@@ -21,7 +21,10 @@ jobs:
             platform: mac
           - os: ubuntu-latest
             platform: linux
-          - os: windows-latest
+          # Pinned to windows-2022 (VS 2022 / v17): the windows-latest image moved
+          # to VS 2026 (v18), which the bundled node-gyp can't detect, breaking the
+          # node-pty native rebuild during install. Revisit when node-gyp supports VS18.
+          - os: windows-2022
             platform: win
 
     runs-on: ${{ matrix.os }}

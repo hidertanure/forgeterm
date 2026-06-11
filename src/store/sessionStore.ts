@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { SessionActivityStatus, SessionContext } from '../../shared/types'
+import type { SessionActivityStatus, SessionActivitySignal, SessionContext } from '../../shared/types'
 
 export interface Session {
   id: string
@@ -10,6 +10,9 @@ export interface Session {
   info?: SessionContext
   contextPercent?: number
   conversationId?: string
+  // True once a precise activity signal (Claude hook / `ft activity`) has been
+  // seen for this session. Disables the PTY-output heuristic so the two never fight.
+  hookManaged?: boolean
 }
 
 interface SessionStore {
@@ -25,6 +28,7 @@ interface SessionStore {
   setContextPercent: (id: string, percent: number) => void
   setActivityStatus: (id: string, status: SessionActivityStatus) => void
   markSessionWorking: (id: string) => void
+  applyActivitySignal: (id: string, signal: SessionActivitySignal, viewing: boolean) => void
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -53,8 +57,13 @@ export const useSessionStore = create<SessionStore>((set) => ({
   setActive: (id) =>
     set((state) => ({
       activeSessionId: id,
+      // Visiting a session clears the unread/needs-attention dot. A hook-managed
+      // session that is actively working keeps its loading indicator (a later
+      // 'done'/'attention' signal clears it); heuristic sessions clear on view.
       sessions: state.sessions.map((s) =>
-        s.id === id ? { ...s, activityStatus: 'idle' as const } : s,
+        s.id === id && !(s.hookManaged && s.activityStatus === 'working')
+          ? { ...s, activityStatus: 'idle' as const }
+          : s,
       ),
     })),
 
@@ -107,6 +116,28 @@ export const useSessionStore = create<SessionStore>((set) => ({
       return {
         sessions: state.sessions.map((s) =>
           s.id === id ? { ...s, activityStatus: 'working' as const } : s,
+        ),
+      }
+    }),
+
+  // Precise activity signal from a Claude hook / `ft activity`. Marks the
+  // session hook-managed (disabling the PTY heuristic) and maps the signal to
+  // a display status: 'done' clears to idle when you're viewing the session,
+  // otherwise becomes 'unread'; 'attention' always becomes 'unread'.
+  applyActivitySignal: (id, signal, viewing) =>
+    set((state) => {
+      const session = state.sessions.find((s) => s.id === id)
+      if (!session) return state
+      let status: SessionActivityStatus
+      switch (signal) {
+        case 'working': status = 'working'; break
+        case 'done': status = viewing ? 'idle' : 'unread'; break
+        case 'attention': status = 'unread'; break
+        default: status = 'idle'
+      }
+      return {
+        sessions: state.sessions.map((s) =>
+          s.id === id ? { ...s, activityStatus: status, hookManaged: true } : s,
         ),
       }
     }),

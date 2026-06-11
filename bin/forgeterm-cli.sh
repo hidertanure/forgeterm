@@ -269,6 +269,38 @@ USAGE
   check_response "$response" true || exit 1
 }
 
+cmd_activity() {
+  if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    cat <<'USAGE'
+Usage: ft activity <working|done|attention|idle>
+
+Report Claude's working state for the current session. ForgeTerm shows a
+loading indicator while a session is working and a glowing notification dot
+when Claude finishes (cleared once you visit the session).
+
+Usually called automatically by Claude Code hooks:
+  UserPromptSubmit -> working   Stop -> done   Notification -> attention
+
+Examples:
+  ft activity working
+  ft activity done
+USAGE
+    exit 0
+  fi
+  local status="$1"
+  case "$status" in
+    working|done|attention|idle) ;;
+    "") echo "Usage: ft activity <working|done|attention|idle>" >&2; exit 1 ;;
+    *) echo "Invalid status: $status (use working|done|attention|idle)" >&2; exit 1 ;;
+  esac
+  require_session
+
+  local json="{\"command\":\"activity\",\"status\":$(json_string "$status"),\"projectPath\":$(json_string "$FORGETERM_PROJECT_PATH"),\"sessionId\":$(json_string "$FORGETERM_SESSION_ID")}"
+  local response
+  response=$(send_to_socket "$json") || exit 1
+  check_response "$response" true || exit 1
+}
+
 cmd_open() {
   if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo "Usage: ft open <path> - Open a project in ForgeTerm"
@@ -759,6 +791,7 @@ Direct commands:
   info                    Update session info card
   context <0-100>         Report context window usage %
   conversation <id>       Link session to a Claude conversation ID
+  activity <state>        Report working state (working|done|attention|idle)
   open [path]             Open a project
   open-workspace [path]   Open folder as workspace
   list [--json]           List recent projects
@@ -783,6 +816,7 @@ case "${1:-}" in
   info)      shift; cmd_info "$@" ;;
   context)   shift; cmd_context "$@" ;;
   conversation) shift; cmd_conversation "$@" ;;
+  activity)  shift; cmd_activity "$@" ;;
   open)      shift; cmd_open "$@" ;;
   list)      shift; cmd_list "$@" ;;
   dashboard) send_command '{"command":"dashboard"}' ;;

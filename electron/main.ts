@@ -190,6 +190,21 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     return { ok: true }
   })
 
+  handlers.set('activity', (p) => {
+    const projectPath = p.projectPath as string
+    const sessionId = p.sessionId as string
+    const status = p.status as string
+    const valid = ['working', 'done', 'attention', 'idle']
+    if (!projectPath || !sessionId || !valid.includes(status)) {
+      return { ok: false, error: 'Missing projectPath/sessionId or invalid status' }
+    }
+    const win = findWindowForProject(projectPath)
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('session:activity-updated', sessionId, status)
+    }
+    return { ok: true }
+  })
+
   handlers.set('open-workspace', (p) => {
     const parentPath = p.path as string
     if (!parentPath) return { ok: false, error: 'Missing path' }
@@ -2483,6 +2498,10 @@ function setupIpcHandlers() {
     }
   })
 
+  // --- Claude activity hooks ---
+  ipcMain.handle('claude-hooks:installed', (): boolean => areClaudeActivityHooksInstalled())
+  ipcMain.handle('claude-hooks:install', (): { success: boolean; error?: string } => installClaudeActivityHooks())
+
   // --- Update checks ---
 
   ipcMain.handle('update:check', async (): Promise<UpdateInfo> => {
@@ -2652,6 +2671,102 @@ async function installCli() {
   }
 }
 
+// --- Claude activity hooks ---
+// Install Claude Code hooks that report each session's working state via
+// `forgeterm activity`, so ForgeTerm can show precise loading / needs-attention
+// indicators. Mirrors the existing conversation-id SessionStart hook.
+
+const CLAUDE_ACTIVITY_HOOKS = [
+  { event: 'UserPromptSubmit', status: 'working' },
+  { event: 'Stop', status: 'done' },
+  { event: 'Notification', status: 'attention' },
+]
+
+function getActivityHookSourcePath(): string {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'bin', 'hooks', 'report-activity.cjs')
+  }
+  return path.join(__dirname, '..', 'bin', 'hooks', 'report-activity.cjs')
+}
+function activityHookScriptDest(): string {
+  return path.join(app.getPath('home'), '.claude', 'hooks', 'forgeterm', 'report-activity.cjs')
+}
+function claudeSettingsPath(): string {
+  return path.join(app.getPath('home'), '.claude', 'settings.json')
+}
+// True if any entry in this event's hook array references the activity script.
+function hasActivityHook(arr: unknown): boolean {
+  if (!Array.isArray(arr)) return false
+  return arr.some((entry) =>
+    Array.isArray((entry as { hooks?: unknown }).hooks) &&
+    (entry as { hooks: Array<{ command?: unknown }> }).hooks.some(
+      (h) => typeof h.command === 'string' && h.command.includes('report-activity.cjs'),
+    ),
+  )
+}
+
+function areClaudeActivityHooksInstalled(): boolean {
+  try {
+    if (!fs.existsSync(activityHookScriptDest())) return false
+    const settingsPath = claudeSettingsPath()
+    if (!fs.existsSync(settingsPath)) return false
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+    const hooks = (settings?.hooks ?? {}) as Record<string, unknown>
+    return CLAUDE_ACTIVITY_HOOKS.every(({ event }) => hasActivityHook(hooks[event]))
+  } catch {
+    return false
+  }
+}
+
+function installClaudeActivityHooks(): { success: boolean; error?: string } {
+  try {
+    const source = getActivityHookSourcePath()
+    if (!fs.existsSync(source)) {
+      return { success: false, error: `Hook script not found at ${source}` }
+    }
+    // 1. Copy the hook script into ~/.claude/hooks/forgeterm/
+    const scriptDest = activityHookScriptDest()
+    fs.mkdirSync(path.dirname(scriptDest), { recursive: true })
+    fs.copyFileSync(source, scriptDest)
+    fs.chmodSync(scriptDest, 0o755)
+
+    // 2. Register the three hooks in ~/.claude/settings.json (idempotent)
+    const settingsPath = claudeSettingsPath()
+    let settings: { hooks?: Record<string, Array<unknown>> } = {}
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf-8')
+      try {
+        settings = JSON.parse(raw)
+      } catch {
+        return { success: false, error: 'Could not parse ~/.claude/settings.json' }
+      }
+      // Back up before modifying
+      fs.writeFileSync(settingsPath + '.bak-forgeterm-activity', raw, 'utf-8')
+    } else {
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    }
+    if (!settings.hooks || typeof settings.hooks !== 'object') settings.hooks = {}
+
+    let changed = false
+    for (const { event, status } of CLAUDE_ACTIVITY_HOOKS) {
+      if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = []
+      if (hasActivityHook(settings.hooks[event])) continue
+      settings.hooks[event].push({
+        matcher: '',
+        hooks: [{ type: 'command', command: `node "${scriptDest}" ${status}`, timeout: 3000 }],
+      })
+      changed = true
+    }
+    if (changed) {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
+    }
+    return { success: true }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { success: false, error: msg }
+  }
+}
+
 function buildMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -2676,6 +2791,21 @@ function buildMenu() {
           label: 'Install Command Line Tool...',
           click: async () => {
             await installCli()
+          },
+        },
+        {
+          label: 'Install Claude Activity Hooks...',
+          click: () => {
+            const result = installClaudeActivityHooks()
+            if (result.success) {
+              dialog.showMessageBox({
+                type: 'info',
+                message: 'Claude activity hooks installed',
+                detail: 'ForgeTerm sessions will now show a loading indicator while Claude works and a glowing dot when it finishes.\n\nApplies to Claude sessions started from now on.',
+              })
+            } else {
+              dialog.showErrorBox('Install Failed', result.error || 'Unknown error')
+            }
           },
         },
         { type: 'separator' },

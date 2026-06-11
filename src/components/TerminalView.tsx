@@ -159,9 +159,12 @@ export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
         }
       })
 
-      // Activity tracking: mark non-active sessions as working
+      // Activity tracking: mark non-active sessions as working.
+      // Skip sessions driven by precise Claude hooks (`ft activity`) so the
+      // output heuristic doesn't fight the authoritative signal.
       const store = useSessionStore.getState()
-      if (store.activeSessionId !== sessionId) {
+      const trackedSession = store.sessions.find((s) => s.id === sessionId)
+      if (!trackedSession?.hookManaged && store.activeSessionId !== sessionId) {
         store.markSessionWorking(sessionId)
         const existing = activityTimers.get(sessionId)
         if (existing) clearTimeout(existing)
@@ -309,8 +312,14 @@ export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
   // Fit and scroll to bottom when becoming active
   useEffect(() => {
     if (active) {
-      // Clear activity state when user views this session
-      useSessionStore.getState().setActivityStatus(sessionId, 'idle')
+      // Clear the unread/needs-attention dot when viewing. A hook-managed
+      // session that is actively working keeps its loading indicator (a later
+      // 'done'/'attention' signal clears it); heuristic sessions clear on view.
+      const st = useSessionStore.getState()
+      const sess = st.sessions.find((s) => s.id === sessionId)
+      if (!(sess?.hookManaged && sess.activityStatus === 'working')) {
+        st.setActivityStatus(sessionId, 'idle')
+      }
       const actTimer = activityTimers.get(sessionId)
       if (actTimer) clearTimeout(actTimer)
       activityTimers.delete(sessionId)

@@ -234,6 +234,11 @@ export interface ClaudeConnectionStatus {
 
 export type SessionActivityStatus = 'idle' | 'working' | 'unread'
 
+// Signals reported by the CLI / Claude hooks. Mapped to SessionActivityStatus
+// in the renderer: 'done' clears to idle if the session is being viewed,
+// otherwise becomes 'unread'; 'attention' always becomes 'unread'.
+export type SessionActivitySignal = 'working' | 'done' | 'attention' | 'idle'
+
 export interface SessionStatusReport {
   sessionId: string
   sessionName: string
@@ -331,6 +336,9 @@ export interface ForgeTermAPI {
   onSessionInfoUpdated: (callback: (sessionId: string, info: SessionContext) => void) => () => void
   onContextUpdated: (callback: (sessionId: string, percent: number) => void) => () => void
   onConversationUpdated: (callback: (sessionId: string, conversationId: string) => void) => () => void
+  onSessionActivityUpdated: (callback: (sessionId: string, signal: SessionActivitySignal) => void) => () => void
+  installClaudeHooks: () => Promise<{ success: boolean; error?: string }>
+  areClaudeHooksInstalled: () => Promise<boolean>
   getSavedSessions: () => Promise<SavedWindowState | null>
   clearSavedSessions: () => Promise<void>
   deleteSession: (id: string) => Promise<void>

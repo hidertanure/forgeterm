@@ -3,9 +3,11 @@ import type { DashboardState, DashboardWorkspace, DashboardProject, DashboardSes
 import { SessionSearch } from './SessionSearch'
 
 function StatusDot({ status, size = 8 }: { status: string; size?: number }) {
-  const color = status === 'working' ? '#4ade80' : status === 'unread' ? '#facc15' : '#475569'
+  const color = status === 'working' ? '#4ade80' : status === 'unread' ? '#f87171' : '#475569'
+  const className = `dashboard-status-dot${status === 'working' ? ' working' : status === 'unread' ? ' unread' : ''}`
   return (
     <span
+      className={className}
       style={{
         display: 'inline-block',
         width: size,

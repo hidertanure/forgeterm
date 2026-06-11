@@ -196,6 +196,12 @@ const api: ForgeTermAPI = {
   installCli: () =>
     ipcRenderer.invoke('cli:install'),
 
+  installClaudeHooks: () =>
+    ipcRenderer.invoke('claude-hooks:install'),
+
+  areClaudeHooksInstalled: () =>
+    ipcRenderer.invoke('claude-hooks:installed'),
+
   dismissCliPrompt: () =>
     ipcRenderer.invoke('cli:dismiss-prompt'),
 
@@ -328,6 +334,12 @@ const api: ForgeTermAPI = {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string, conversationId: string) => callback(sessionId, conversationId)
     ipcRenderer.on('session:conversation-updated', handler)
     return () => { ipcRenderer.removeListener('session:conversation-updated', handler) }
+  },
+
+  onSessionActivityUpdated: (callback: (sessionId: string, signal: import('../shared/types').SessionActivitySignal) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string, signal: import('../shared/types').SessionActivitySignal) => callback(sessionId, signal)
+    ipcRenderer.on('session:activity-updated', handler)
+    return () => { ipcRenderer.removeListener('session:activity-updated', handler) }
   },
 
   getSavedSessions: () =>

@@ -349,17 +349,47 @@
 }
 
 .context-circle.activity-working {
-  filter: drop-shadow(0 0 4px #4ade8080);
-  animation: circle-pulse-working 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px #4ade8090);
 }
 
+/* Spinning arc inside the circle = "Claude is working" loading state */
+.context-spinner {
+  transform-origin: 50% 50%;
+  animation: circle-spin 0.8s linear infinite;
+}
+
+@keyframes circle-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Needs-attention: red/amber glowing pulse */
 .context-circle.activity-unread {
-  filter: drop-shadow(0 0 3px #facc1560);
+  animation: circle-pulse-unread 1.6s ease-in-out infinite;
 }
 
-@keyframes circle-pulse-working {
-  0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px #4ade8060); }
-  50% { opacity: 0.7; filter: drop-shadow(0 0 6px #4ade80a0); }
+@keyframes circle-pulse-unread {
+  0%, 100% { filter: drop-shadow(0 0 2px #f8717160); }
+  50% { filter: drop-shadow(0 0 7px #f87171cc); }
+}
+
+/* Command Center status dots mirror the sidebar indicators */
+.dashboard-status-dot.working {
+  animation: dash-dot-working 1.2s ease-in-out infinite;
+}
+
+@keyframes dash-dot-working {
+  0%, 100% { box-shadow: 0 0 3px 0 #4ade8080; }
+  50% { box-shadow: 0 0 6px 1px #4ade80; }
+}
+
+.dashboard-status-dot.unread {
+  animation: dash-dot-unread 1.6s ease-in-out infinite;
+}
+
+@keyframes dash-dot-unread {
+  0%, 100% { box-shadow: 0 0 3px 0 #f8717180; }
+  50% { box-shadow: 0 0 7px 1px #f87171; }
 }
 
 .session-name {

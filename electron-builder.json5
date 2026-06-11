@@ -18,6 +18,10 @@
       "to": "bin/forgeterm-cli.sh"
     },
     {
+      "from": "bin/hooks/report-activity.cjs",
+      "to": "bin/hooks/report-activity.cjs"
+    },
+    {
       "from": "electron/remote-web",
       "to": "remote-web"
     }

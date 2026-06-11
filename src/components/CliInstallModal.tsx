@@ -41,9 +41,12 @@ export function CliInstallModal({ accentColor, cliStatus, onClose, onInstalled, 
   const [copied, setCopied] = useState<string | null>(null)
   const [finderInstalled, setFinderInstalled] = useState(false)
   const [finderBusy, setFinderBusy] = useState(false)
+  const [claudeHooksInstalled, setClaudeHooksInstalled] = useState(false)
+  const [claudeHooksBusy, setClaudeHooksBusy] = useState(false)
 
   useEffect(() => {
     window.forgeterm.isFinderIntegrationInstalled().then(setFinderInstalled)
+    window.forgeterm.areClaudeHooksInstalled().then(setClaudeHooksInstalled)
   }, [])
 
   const handleInstall = useCallback(async () => {
@@ -79,6 +82,18 @@ export function CliInstallModal({ accentColor, cliStatus, onClose, onInstalled, 
       setError('Failed to restart the CLI server. Try restarting ForgeTerm.')
     }
   }, [onStatusChange])
+
+  const handleClaudeHooksInstall = useCallback(async () => {
+    setClaudeHooksBusy(true)
+    setError(null)
+    const result = await window.forgeterm.installClaudeHooks()
+    setClaudeHooksBusy(false)
+    if (result.success) {
+      setClaudeHooksInstalled(true)
+    } else {
+      setError(result.error || 'Failed to install Claude activity hooks')
+    }
+  }, [])
 
   const handleFinderToggle = useCallback(async () => {
     setFinderBusy(true)
@@ -398,6 +413,42 @@ export function CliInstallModal({ accentColor, cliStatus, onClose, onInstalled, 
                     <div><strong style={{ color: '#94a3b8' }}>Open as Workspace</strong> - child folders become workspace projects</div>
                   </div>
                 )}
+              </div>
+
+              {/* Claude activity indicators */}
+              <div style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 8,
+                padding: 16,
+                marginBottom: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ paddingRight: 12 }}>
+                    <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500 }}>Claude Activity Indicators</div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 2, lineHeight: 1.5 }}>
+                      Show a loading dot while Claude works and a glowing dot when it finishes a turn. Adds hooks to your global <code style={codeStyle}>~/.claude/settings.json</code> (backed up first).
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleClaudeHooksInstall}
+                    disabled={claudeHooksBusy || claudeHooksInstalled}
+                    style={{
+                      background: claudeHooksInstalled ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)',
+                      border: claudeHooksInstalled ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 6,
+                      padding: '5px 12px',
+                      color: claudeHooksInstalled ? '#4ade80' : '#94a3b8',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      cursor: (claudeHooksBusy || claudeHooksInstalled) ? 'default' : 'pointer',
+                      opacity: claudeHooksBusy ? 0.6 : 1,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {claudeHooksBusy ? '...' : claudeHooksInstalled ? 'Enabled' : 'Enable'}
+                  </button>
+                </div>
               </div>
 
               {error && (

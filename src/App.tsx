@@ -205,7 +205,12 @@ function App() {
     const unsubConversation = window.forgeterm.onConversationUpdated((sessionId, conversationId) => {
       useSessionStore.getState().setConversationId(sessionId, conversationId)
     })
-    return () => { unsubRename(); unsubInfo(); unsubContext(); unsubConversation() }
+    const unsubActivity = window.forgeterm.onSessionActivityUpdated((sessionId, signal) => {
+      const st = useSessionStore.getState()
+      const viewing = st.activeSessionId === sessionId && document.hasFocus()
+      st.applyActivitySignal(sessionId, signal, viewing)
+    })
+    return () => { unsubRename(); unsubInfo(); unsubContext(); unsubConversation(); unsubActivity() }
   }, [])
 
   // Listen for session exits

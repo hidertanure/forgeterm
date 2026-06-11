@@ -2,8 +2,8 @@ import { ipcRenderer, contextBridge } from 'electron'
 import type { ForgeTermAPI, CliStatus, UpdateInfo, RemoteStatus, SessionContext, DashboardState } from '../shared/types'
 
 const api: ForgeTermAPI = {
-  createSession: (name: string, command?: string, idle?: boolean) =>
-    ipcRenderer.invoke('session:create', name, command, idle),
+  createSession: (name: string, command?: string, idle?: boolean, nameLocked?: boolean) =>
+    ipcRenderer.invoke('session:create', name, command, idle, nameLocked),
 
   killSession: (id: string) =>
     ipcRenderer.invoke('session:kill', id),
@@ -356,6 +356,12 @@ const api: ForgeTermAPI = {
 
   getClaudeSetupPrompt: () =>
     ipcRenderer.invoke('claude:get-setup-prompt'),
+
+  getClaudeLaunch: () =>
+    ipcRenderer.invoke('claude:get-launch'),
+
+  closeWindow: () =>
+    ipcRenderer.invoke('window:close'),
 }
 
 contextBridge.exposeInMainWorld('forgeterm', api)

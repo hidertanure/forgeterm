@@ -19,6 +19,8 @@ export function ProjectSettings({ config, accentColor, projectName, onSave, onCa
   const [sessions, setSessions] = useState<SessionConfig[]>([])
   const [customName, setCustomName] = useState('')
   const [dragDropBehavior, setDragDropBehavior] = useState<'ask' | 'path' | 'content' | 'copy'>('ask')
+  const [claudeCliName, setClaudeCliName] = useState('')
+  const [skipPermissions, setSkipPermissions] = useState(true)
   const [workspaceName, setWorkspaceName] = useState('')
   const [existingWorkspaces, setExistingWorkspaces] = useState<Workspace[]>([])
   const [showWorkspaceSuggestions, setShowWorkspaceSuggestions] = useState(false)
@@ -31,6 +33,8 @@ export function ProjectSettings({ config, accentColor, projectName, onSave, onCa
   useEffect(() => {
     setCustomName(config?.projectName ?? '')
     setDragDropBehavior(config?.dragDropBehavior ?? 'ask')
+    setClaudeCliName(config?.claudeCliName ?? '')
+    setSkipPermissions(config?.dangerouslySkipPermissions ?? true)
     const configSessions = config?.sessions || []
     setSessions(
       configSessions.map((s) => ({
@@ -106,6 +110,10 @@ export function ProjectSettings({ config, accentColor, projectName, onSave, onCa
       ...config,
       projectName: customName.trim() || undefined,
       dragDropBehavior: dragDropBehavior === 'ask' ? undefined : dragDropBehavior,
+      // Empty CLI name inherits the workspace/default ("claude"); skip-permissions
+      // is stored explicitly so the project always overrides the workspace.
+      claudeCliName: claudeCliName.trim() || undefined,
+      dangerouslySkipPermissions: skipPermissions,
       sessions: validSessions.map((s) => ({
         name: s.name.trim(),
         command: s.command.trim() || undefined,
@@ -123,7 +131,7 @@ export function ProjectSettings({ config, accentColor, projectName, onSave, onCa
       }
     }
     onSave(updated)
-  }, [config, customName, dragDropBehavior, sessions, workspaceName, onSave])
+  }, [config, customName, dragDropBehavior, claudeCliName, skipPermissions, sessions, workspaceName, onSave])
 
   const filteredWorkspaces = existingWorkspaces.filter(
     (ws) => ws.name.toLowerCase().includes(workspaceName.toLowerCase()) && ws.name !== workspaceName,
@@ -206,6 +214,24 @@ export function ProjectSettings({ config, accentColor, projectName, onSave, onCa
             <option value="content">Always paste content</option>
             <option value="copy">Always copy to project</option>
           </select>
+        </div>
+
+        <div className="form-field">
+          <label>Claude CLI command</label>
+          <input
+            type="text"
+            value={claudeCliName}
+            onChange={(e) => setClaudeCliName(e.target.value)}
+            placeholder="claude"
+          />
+          <label className="checkbox-row" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={skipPermissions}
+              onChange={(e) => setSkipPermissions(e.target.checked)}
+            />
+            <span>Skip permissions on resume (<code>--dangerously-skip-permissions</code>)</span>
+          </label>
         </div>
 
         <div className="settings-section-title">Startup Sessions</div>

@@ -18,6 +18,8 @@ export interface Session {
 interface SessionStore {
   sessions: Session[]
   activeSessionId: string | null
+  // Transient signal: when set, the Sidebar opens inline rename for this session.
+  renameRequestId: string | null
   addSession: (session: Omit<Session, 'activityStatus'>) => void
   removeSession: (id: string) => void
   setActive: (id: string) => void
@@ -29,11 +31,14 @@ interface SessionStore {
   setActivityStatus: (id: string, status: SessionActivityStatus) => void
   markSessionWorking: (id: string) => void
   applyActivitySignal: (id: string, signal: SessionActivitySignal, viewing: boolean) => void
+  requestRename: (id: string) => void
+  clearRenameRequest: () => void
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
   sessions: [],
   activeSessionId: null,
+  renameRequestId: null,
 
   addSession: (session) =>
     set((state) => ({
@@ -141,4 +146,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
         ),
       }
     }),
+
+  requestRename: (id) => set({ renameRequestId: id }),
+  clearRenameRequest: () => set({ renameRequestId: null }),
 }))

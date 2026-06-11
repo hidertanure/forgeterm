@@ -37,6 +37,11 @@ export interface ForgeTermConfig {
   }>
   dragDropBehavior?: 'ask' | 'path' | 'content' | 'copy'
   claudeResumeArgs?: string[]
+  // Custom Claude CLI command name (default "claude"), e.g. "claude-hsp".
+  claudeCliName?: string
+  // Whether ForgeTerm-built Claude resume/restore commands include
+  // --dangerously-skip-permissions (default true).
+  dangerouslySkipPermissions?: boolean
 }
 
 export interface SessionInfo {
@@ -68,6 +73,10 @@ export interface Workspace {
   description?: string
   accentColor?: string
   defaultCommand?: string
+  // Custom Claude CLI command name for projects in this workspace (e.g. "claude-hsp").
+  claudeCliName?: string
+  // Whether automatic Claude resumes include --dangerously-skip-permissions.
+  dangerouslySkipPermissions?: boolean
 }
 
 export interface DisplayInfo {
@@ -146,6 +155,15 @@ export interface SavedSession {
   claudeSessionId?: string
   info?: SessionContext
   order: number
+  // True if the user renamed this session manually; persists the rename lock
+  // so a CLI/Claude `ft rename` won't override it after restore.
+  nameLocked?: boolean
+}
+
+// Resolved Claude launch settings for a project (precedence: project -> workspace -> default).
+export interface ClaudeLaunch {
+  cliName: string
+  resumeArgs: string[]
 }
 
 export interface SavedWindowState {
@@ -246,7 +264,7 @@ export interface SessionStatusReport {
 }
 
 export interface ForgeTermAPI {
-  createSession: (name: string, command?: string, idle?: boolean) => Promise<string>
+  createSession: (name: string, command?: string, idle?: boolean, nameLocked?: boolean) => Promise<string>
   killSession: (id: string) => Promise<void>
   restartSession: (id: string) => Promise<string>
   writeToSession: (id: string, data: string) => void
@@ -344,4 +362,6 @@ export interface ForgeTermAPI {
   deleteSession: (id: string) => Promise<void>
   checkClaudeConnection: () => Promise<ClaudeConnectionStatus>
   getClaudeSetupPrompt: () => Promise<string>
+  getClaudeLaunch: () => Promise<ClaudeLaunch>
+  closeWindow: () => void
 }

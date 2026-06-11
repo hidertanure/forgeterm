@@ -13,12 +13,20 @@ import { Dashboard } from './components/Dashboard'
 import { UpdateBanner } from './components/UpdateBanner'
 import { ClaudeConnectionBanner } from './components/ClaudeConnectionBanner'
 import { useSessionStore } from './store/sessionStore'
-import type { ForgeTermConfig, CliStatus } from '../shared/types'
+import type { ForgeTermConfig, CliStatus, ClaudeLaunch } from '../shared/types'
 import type { WindowTheme } from './themes'
 import { generateWindowTheme, adjustAccentBrightness, getTerminalTheme } from './themes'
 import './App.css'
 
 type SidebarMode = 'full' | 'compact' | 'hidden'
+
+const DEFAULT_CLAUDE_LAUNCH: ClaudeLaunch = { cliName: 'claude', resumeArgs: ['--dangerously-skip-permissions'] }
+
+// Build the command that resumes a Claude conversation, honoring the project's
+// resolved CLI name (e.g. "claude-hsp") and resume args (skip-permissions toggle).
+function buildResumeCommand(conversationId: string, launch: ClaudeLaunch): string {
+  return [launch.cliName, ...launch.resumeArgs, '--resume', conversationId].join(' ')
+}
 
 const isDashboard = new URLSearchParams(window.location.search).get('mode') === 'dashboard'
 
@@ -27,6 +35,7 @@ function App() {
 
   const { sessions, activeSessionId, addSession, setRunning, setActive, removeSession } = useSessionStore()
   const [config, setConfig] = useState<ForgeTermConfig | null>(null)
+  const [claudeLaunch, setClaudeLaunch] = useState<ClaudeLaunch>(DEFAULT_CLAUDE_LAUNCH)
   const [showModal, setShowModal] = useState(false)
   const [showThemeEditor, setShowThemeEditor] = useState(false)
   const [showProjectSettings, setShowProjectSettings] = useState(false)
@@ -73,13 +82,14 @@ function App() {
     initializedRef.current = true
 
     async function init() {
-      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState] = await Promise.all([
+      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState, launch] = await Promise.all([
         window.forgeterm.getProjectConfig(),
         window.forgeterm.getProjectPath(),
         window.forgeterm.getSidebarMode(),
         window.forgeterm.getSidebarWidth(),
         window.forgeterm.hasProject(),
         window.forgeterm.getSavedSessions(),
+        window.forgeterm.getClaudeLaunch(),
       ])
 
       if (!hasProject) {
@@ -88,6 +98,7 @@ function App() {
       }
 
       setConfig(projectConfig)
+      setClaudeLaunch(launch)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
       const folder = projectPath?.split('/').pop() || 'ForgeTerm'
@@ -103,12 +114,13 @@ function App() {
             let idle = !s.wasRunning
 
             if (s.claudeSessionId) {
-              const extraArgs = projectConfig?.claudeResumeArgs?.join(' ') || ''
-              command = `claude -r ${s.claudeSessionId}${extraArgs ? ' ' + extraArgs : ''}`
-              idle = false
+              // Don't auto-resume Claude sessions on open: come up stopped, the
+              // user resumes via the play button or the info-panel Resume button.
+              command = buildResumeCommand(s.claudeSessionId, launch)
+              idle = true
             }
 
-            const id = await window.forgeterm.createSession(s.name, command, idle)
+            const id = await window.forgeterm.createSession(s.name, command, idle, s.nameLocked)
             return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
           })
         )
@@ -223,8 +235,12 @@ function App() {
   // Listen for config changes
   useEffect(() => {
     return window.forgeterm.onConfigChanged(async () => {
-      const newConfig = await window.forgeterm.getProjectConfig()
+      const [newConfig, launch] = await Promise.all([
+        window.forgeterm.getProjectConfig(),
+        window.forgeterm.getClaudeLaunch(),
+      ])
       setConfig(newConfig)
+      setClaudeLaunch(launch)
       if (newConfig?.projectName) {
         document.title = newConfig.projectName
       }
@@ -260,14 +276,16 @@ function App() {
     return window.forgeterm.onProjectOpened(async () => {
       setShowWelcome(false)
       initializedRef.current = false
-      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, savedState] = await Promise.all([
+      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, savedState, launch] = await Promise.all([
         window.forgeterm.getProjectConfig(),
         window.forgeterm.getProjectPath(),
         window.forgeterm.getSidebarMode(),
         window.forgeterm.getSidebarWidth(),
         window.forgeterm.getSavedSessions(),
+        window.forgeterm.getClaudeLaunch(),
       ])
       setConfig(projectConfig)
+      setClaudeLaunch(launch)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
       const folder = projectPath?.split('/').pop() || 'ForgeTerm'
@@ -281,11 +299,10 @@ function App() {
             let command = s.command
             let idle = !s.wasRunning
             if (s.claudeSessionId) {
-              const extraArgs = projectConfig?.claudeResumeArgs?.join(' ') || ''
-              command = `claude -r ${s.claudeSessionId}${extraArgs ? ' ' + extraArgs : ''}`
-              idle = false
+              command = buildResumeCommand(s.claudeSessionId, launch)
+              idle = true
             }
-            const id = await window.forgeterm.createSession(s.name, command, idle)
+            const id = await window.forgeterm.createSession(s.name, command, idle, s.nameLocked)
             return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
           })
         )
@@ -418,6 +435,19 @@ function App() {
         }
       }
 
+      // Cmd+Shift+W: close the project window
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        window.forgeterm.closeWindow()
+      }
+
+      // Cmd+R: rename the active session inline (does NOT reload the renderer)
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        const store = useSessionStore.getState()
+        if (store.activeSessionId) store.requestRename(store.activeSessionId)
+      }
+
       // Cmd+K: clear terminal
       if (mod && e.key === 'k') {
         e.preventDefault()
@@ -499,11 +529,10 @@ function App() {
     }
   }, [createSession, config])
 
+  // Resume a Claude conversation in a brand-new session (used when the source
+  // session is already running).
   const handleResumeSession = useCallback(async (conversationId: string, name: string) => {
-    const args = config?.claudeResumeArgs && config.claudeResumeArgs.length > 0
-      ? config.claudeResumeArgs
-      : ['--dangerously-skip-permissions']
-    const command = `claude ${args.join(' ')} --resume ${conversationId}`
+    const command = buildResumeCommand(conversationId, claudeLaunch)
     const resumeName = `${name} (resume)`
     const id = await window.forgeterm.createSession(resumeName, command)
     if (id) {
@@ -511,7 +540,15 @@ function App() {
       setActive(id)
     }
     setInfoPanelSessionId(null)
-  }, [config, addSession, setActive])
+  }, [claudeLaunch, addSession, setActive])
+
+  // Resume a stopped session in place: starts it, running its stored resume command.
+  const handleResumeInPlace = useCallback(async (sessionId: string) => {
+    await window.forgeterm.restartSession(sessionId)
+    setRunning(sessionId, true)
+    setActive(sessionId)
+    setInfoPanelSessionId(null)
+  }, [setRunning, setActive])
 
   const handleSaveTheme = useCallback(async (updatedConfig: ForgeTermConfig) => {
     setShowThemeEditor(false)
@@ -638,6 +675,7 @@ function App() {
               accentColor={accentColor}
               onClose={() => setInfoPanelSessionId(null)}
               onResume={handleResumeSession}
+              onResumeInPlace={handleResumeInPlace}
             />
           ) : null
         })()}

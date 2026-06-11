@@ -126,6 +126,11 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     const win = findWindowForProject(projectPath)
     if (win && !win.isDestroyed()) {
       const state = windowStates.get(win.id)
+      // Respect a manual rename: once the user names a session, CLI/Claude
+      // renames are ignored (reported as ok so Claude doesn't retry/error).
+      if (state?.ptyManager.isNameLocked(sessionId)) {
+        return { ok: true }
+      }
       state?.ptyManager.rename(sessionId, name)
       win.webContents.send('session:renamed', sessionId, name)
       schedulePersist(win.id)
@@ -389,6 +394,8 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     if (p.description !== undefined) ws.description = p.description as string
     if (p.accentColor !== undefined) ws.accentColor = p.accentColor as string
     if (p.defaultCommand !== undefined) ws.defaultCommand = p.defaultCommand as string
+    if (p.claudeCliName !== undefined) ws.claudeCliName = (p.claudeCliName as string) || undefined
+    if (p.dangerouslySkipPermissions !== undefined) ws.dangerouslySkipPermissions = p.dangerouslySkipPermissions as boolean
     saveWorkspaces(workspaces)
     return { ok: true }
   })
@@ -751,6 +758,21 @@ function getWorkspaceForProject(projectPath: string): string | undefined {
   return workspaces.find((ws) => ws.projects.includes(projectPath))?.name
 }
 
+// Resolve the Claude CLI name + resume args for a project.
+// Precedence: project config -> its workspace -> defaults ("claude", skip-permissions on).
+function resolveClaudeLaunch(projectPath?: string): import('../shared/types').ClaudeLaunch {
+  const config = projectPath ? loadConfig(projectPath) : null
+  const ws = projectPath
+    ? loadWorkspaces().find((w) => w.projects.includes(projectPath))
+    : undefined
+  const cliName = config?.claudeCliName || ws?.claudeCliName || 'claude'
+  const skip = config?.dangerouslySkipPermissions ?? ws?.dangerouslySkipPermissions ?? true
+  const resumeArgs = config?.claudeResumeArgs && config.claudeResumeArgs.length > 0
+    ? config.claudeResumeArgs
+    : (skip ? ['--dangerously-skip-permissions'] : [])
+  return { cliName, resumeArgs }
+}
+
 // --- Claude Code connection check ---
 
 interface ClaudeConnectionStatus {
@@ -960,6 +982,7 @@ function saveWindowSessionState(state: WindowState) {
     claudeSessionId: s.conversationId,
     info: s.info,
     order: index,
+    nameLocked: s.nameLocked,
   }))
 
   const activeSession = sessions.find(s => s.id === state.activeSessionId)
@@ -1808,7 +1831,7 @@ function updateDockBadge() {
 }
 
 function setupIpcHandlers() {
-  ipcMain.handle('session:create', (event, name: string, command?: string, idle?: boolean) => {
+  ipcMain.handle('session:create', (event, name: string, command?: string, idle?: boolean, nameLocked?: boolean) => {
     const state = getStateForEvent(event)
     if (!state) return null
 
@@ -1817,6 +1840,7 @@ function setupIpcHandlers() {
       name,
       command,
       idle,
+      nameLocked,
       cwd: state.projectPath,
       socketPath: getSocketPath(),
       onData: (sessionId, data) => {
@@ -1867,9 +1891,20 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('session:rename', (event, id: string, name: string) => {
-    getStateForEvent(event)?.ptyManager.rename(id, name)
+    // User-initiated rename locks the name against later CLI/Claude renames.
+    getStateForEvent(event)?.ptyManager.rename(id, name, true)
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) schedulePersist(win.id)
+  })
+
+  ipcMain.handle('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && !win.isDestroyed()) win.close()
+  })
+
+  ipcMain.handle('claude:get-launch', (event): import('../shared/types').ClaudeLaunch => {
+    const state = getStateForEvent(event)
+    return resolveClaudeLaunch(state?.projectPath)
   })
 
   ipcMain.handle('config:get', (event) => {
@@ -2285,6 +2320,8 @@ function setupIpcHandlers() {
       if (updates.description !== undefined) ws.description = updates.description || undefined
       if (updates.accentColor !== undefined) ws.accentColor = updates.accentColor || undefined
       if (updates.defaultCommand !== undefined) ws.defaultCommand = updates.defaultCommand || undefined
+      if (updates.claudeCliName !== undefined) ws.claudeCliName = updates.claudeCliName || undefined
+      if (updates.dangerouslySkipPermissions !== undefined) ws.dangerouslySkipPermissions = updates.dangerouslySkipPermissions
       saveWorkspaces(workspaces)
     }
   })
@@ -2902,7 +2939,8 @@ function buildMenu() {
           },
         },
         { type: 'separator' },
-        { role: 'reload' },
+        // Plain Reload (Cmd+R) is intentionally omitted so Cmd+R is free for
+        // "rename active session" in the renderer. Force Reload (Cmd+Shift+R) remains.
         { role: 'forceReload' },
         { role: 'toggleDevTools' },
         { type: 'separator' },

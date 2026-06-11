@@ -590,6 +590,9 @@ else:
           --description) shift; json+=",\"description\":$(json_string "$1")" ;;
           --color) shift; json+=",\"accentColor\":$(json_string "$1")" ;;
           --command) shift; json+=",\"defaultCommand\":$(json_string "$1")" ;;
+          --claude-cli) shift; json+=",\"claudeCliName\":$(json_string "$1")" ;;
+          --skip-permissions) json+=",\"dangerouslySkipPermissions\":true" ;;
+          --no-skip-permissions) json+=",\"dangerouslySkipPermissions\":false" ;;
           *) echo "Unknown option: $1" >&2; exit 1 ;;
         esac
         shift
@@ -616,6 +619,8 @@ Commands:
     --description "text"
     --color "#hex"
     --command "default cmd"
+    --claude-cli "claude-hsp"          Claude CLI name for this workspace
+    --skip-permissions | --no-skip-permissions
 USAGE
       ;;
     *) echo "Unknown workspace command: $1" >&2; exit 1 ;;

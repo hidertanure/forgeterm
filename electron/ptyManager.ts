@@ -12,6 +12,8 @@ interface PtySession {
   info?: SessionContext
   conversationId?: string
   createdAt: number
+  // True once the user renamed this session manually; blocks CLI/Claude renames.
+  nameLocked?: boolean
 }
 
 interface CreateSessionOptions {
@@ -19,6 +21,7 @@ interface CreateSessionOptions {
   command?: string
   cwd: string
   idle?: boolean
+  nameLocked?: boolean
   socketPath?: string
   onData: (id: string, data: string) => void
   onExit: (id: string, exitCode: number) => void
@@ -53,6 +56,7 @@ export class PtyManager {
         cwd: options.cwd,
         running: false,
         createdAt: Date.now(),
+        nameLocked: options.nameLocked,
       })
       return id
     }
@@ -97,6 +101,7 @@ export class PtyManager {
       cwd: options.cwd,
       running: true,
       createdAt: Date.now(),
+      nameLocked: options.nameLocked,
     })
 
     return id
@@ -199,11 +204,16 @@ export class PtyManager {
     return id
   }
 
-  rename(id: string, name: string) {
+  rename(id: string, name: string, lock?: boolean) {
     const session = this.sessions.get(id)
     if (session) {
       session.name = name
+      if (lock) session.nameLocked = true
     }
+  }
+
+  isNameLocked(id: string): boolean {
+    return this.sessions.get(id)?.nameLocked ?? false
   }
 
   setSessionInfo(id: string, info: SessionContext) {
@@ -251,7 +261,7 @@ export class PtyManager {
     return () => { this.extraExitListeners.get(id)?.delete(listener) }
   }
 
-  getAllSessions(): Array<{ id: string; name: string; command?: string; running: boolean; pid: number | null; info?: SessionContext; conversationId?: string; createdAt: number }> {
+  getAllSessions(): Array<{ id: string; name: string; command?: string; running: boolean; pid: number | null; info?: SessionContext; conversationId?: string; createdAt: number; nameLocked?: boolean }> {
     return Array.from(this.sessions.values()).map(s => ({
       id: s.id,
       name: s.name,
@@ -261,6 +271,7 @@ export class PtyManager {
       info: s.info,
       conversationId: s.conversationId,
       createdAt: s.createdAt,
+      nameLocked: s.nameLocked,
     }))
   }
 }

@@ -49,7 +49,7 @@ export function Sidebar({
   cliStatus,
   remoteRunning,
 }: SidebarProps) {
-  const { sessions, activeSessionId, setActive, removeSession } = useSessionStore()
+  const { sessions, activeSessionId, setActive, removeSession, renameRequestId, clearRenameRequest } = useSessionStore()
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
@@ -119,6 +119,14 @@ export function Sidebar({
     }
     setMenu(null)
   }, [sessions])
+
+  // Cmd+R (from App) requests inline rename of a session.
+  useEffect(() => {
+    if (renameRequestId) {
+      startRename(renameRequestId)
+      clearRenameRequest()
+    }
+  }, [renameRequestId, startRename, clearRenameRequest])
 
   const commitRename = useCallback(async () => {
     if (editingId && editName.trim()) {

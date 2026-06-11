@@ -7,6 +7,7 @@ interface SessionInfoPanelProps {
   accentColor: string
   onClose: () => void
   onResume: (conversationId: string, name: string) => void
+  onResumeInPlace: (sessionId: string) => void
 }
 
 function formatTimestamp(ts: number): string {
@@ -23,7 +24,7 @@ function formatTimestamp(ts: number): string {
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
 }
 
-export function SessionInfoPanel({ session, accentColor, onClose, onResume }: SessionInfoPanelProps) {
+export function SessionInfoPanel({ session, accentColor, onClose, onResume, onResumeInPlace }: SessionInfoPanelProps) {
   const info = session.info
   const timeline = info?.timeline ?? []
   const conversationId = session.conversationId
@@ -59,14 +60,25 @@ export function SessionInfoPanel({ session, accentColor, onClose, onResume }: Se
             >
               {copied ? 'Copied!' : conversationId}
             </code>
-            <button
-              className="session-info-panel-resume"
-              style={{ background: accentColor }}
-              onClick={() => onResume(conversationId, session.name)}
-              title="Open a new session resuming this Claude conversation"
-            >
-              Resume in Claude
-            </button>
+            {session.running ? (
+              <button
+                className="session-info-panel-resume"
+                style={{ background: accentColor }}
+                onClick={() => onResume(conversationId, session.name)}
+                title="Open a new session resuming this Claude conversation"
+              >
+                Resume in new session
+              </button>
+            ) : (
+              <button
+                className="session-info-panel-resume"
+                style={{ background: accentColor }}
+                onClick={() => onResumeInPlace(session.id)}
+                title="Start this session, resuming the Claude conversation"
+              >
+                Resume session
+              </button>
+            )}
           </div>
         </div>
       )}

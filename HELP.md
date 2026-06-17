@@ -15,6 +15,7 @@ A terminal emulator built for multi-project workflows. Open an entire workspace 
 | ⌘O | Open folder |
 | ⌘B | Toggle sidebar |
 | ⌘F | Find in terminal |
+| ⌘⇧F | Search all sessions |
 | ⌘K | Clear terminal |
 | ⌘↓ | Scroll to bottom |
 | ⌘↑ | Scroll to top |
@@ -125,6 +126,7 @@ ForgeTerm ships with a command-line tool that communicates with the running app 
 ```bash
 ft notify "Build complete"              # Native macOS notification
 ft rename "Refactoring auth"            # Rename current session
+ft close                                # Close the current session (like ⌘W)
 ft info --title "..." --summary "..."   # Update session info card
 ft open ~/projects/my-app               # Open a project
 ft list                                 # List recent projects

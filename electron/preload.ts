@@ -318,6 +318,12 @@ const api: ForgeTermAPI = {
     return () => { ipcRenderer.removeListener('session:renamed', handler) }
   },
 
+  onSessionClosed: (callback: (sessionId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, sessionId: string) => callback(sessionId)
+    ipcRenderer.on('session:closed', handler)
+    return () => { ipcRenderer.removeListener('session:closed', handler) }
+  },
+
   onSessionInfoUpdated: (callback: (sessionId: string, info: SessionContext) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string, info: SessionContext) => callback(sessionId, info)
     ipcRenderer.on('session:info-updated', handler)

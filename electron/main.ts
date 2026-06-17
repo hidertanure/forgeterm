@@ -138,6 +138,26 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     return { ok: true }
   })
 
+  handlers.set('close', (p) => {
+    const projectPath = p.projectPath as string
+    const sessionId = p.sessionId as string
+    if (!projectPath || !sessionId) return { ok: false, error: 'Missing projectPath or sessionId' }
+    const win = findWindowForProject(projectPath)
+    if (win && !win.isDestroyed()) {
+      // Defer the teardown a beat: the caller is usually the `ft` process running
+      // inside the very session being closed, so killing its PTY synchronously
+      // could race the socket response. Let `ft` read its reply and exit first.
+      setTimeout(() => {
+        if (win.isDestroyed()) return
+        const state = windowStates.get(win.id)
+        state?.ptyManager.removeSession(sessionId)
+        win.webContents.send('session:closed', sessionId)
+        schedulePersist(win.id)
+      }, 150)
+    }
+    return { ok: true }
+  })
+
   handlers.set('info', (p) => {
     const projectPath = p.projectPath as string
     const sessionId = p.sessionId as string
@@ -872,6 +892,7 @@ ft notify "Build failed" --title "CI"
 \`\`\`
 ft notify "msg"                        # Send notification
 ft rename "name"                       # Rename current session
+ft close                               # Close (delete) the current session, like Cmd+W
 ft info --title ... --summary ...      # Update session info card
 ft context <0-100>                     # Report context window usage %
 ft open <path>                         # Open a project

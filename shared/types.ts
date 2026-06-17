@@ -351,6 +351,7 @@ export interface ForgeTermAPI {
   onRemoteStatusChanged: (callback: (status: RemoteStatus) => void) => () => void
   reportSessionStatuses: (statuses: SessionStatusReport[], activeSessionId: string | null) => void
   onSessionRenamed: (callback: (sessionId: string, name: string) => void) => () => void
+  onSessionClosed: (callback: (sessionId: string) => void) => () => void
   onSessionInfoUpdated: (callback: (sessionId: string, info: SessionContext) => void) => () => void
   onContextUpdated: (callback: (sessionId: string, percent: number) => void) => () => void
   onConversationUpdated: (callback: (sessionId: string, conversationId: string) => void) => () => void

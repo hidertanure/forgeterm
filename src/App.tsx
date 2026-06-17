@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Sidebar } from './components/Sidebar'
-import { TerminalView, clearTerminal, scrollTerminalToTop, scrollTerminalToBottom, selectAllTerminal, toggleTerminalSearch } from './components/TerminalView'
+import { TerminalView, clearTerminal, scrollTerminalToTop, scrollTerminalToBottom, selectAllTerminal, toggleTerminalSearch, revealTerminalMatch } from './components/TerminalView'
+import { GlobalSearch } from './components/GlobalSearch'
 import { NewSessionModal } from './components/NewSessionModal'
 import { ThemeEditor } from './components/ThemeEditor'
 import { ProjectSettings } from './components/ProjectSettings'
@@ -45,6 +46,7 @@ function App() {
   const [showCliInstall, setShowCliInstall] = useState(false)
   const [showCliPrompt, setShowCliPrompt] = useState(false)
   const [showRemoteAccess, setShowRemoteAccess] = useState(false)
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false)
   const [infoPanelSessionId, setInfoPanelSessionId] = useState<string | null>(null)
   const [remoteRunning, setRemoteRunning] = useState(false)
   const [cliStatus, setCliStatus] = useState<CliStatus>('not-setup')
@@ -208,6 +210,9 @@ function App() {
     const unsubRename = window.forgeterm.onSessionRenamed((sessionId, name) => {
       useSessionStore.getState().renameSession(sessionId, name)
     })
+    const unsubClosed = window.forgeterm.onSessionClosed((sessionId) => {
+      useSessionStore.getState().removeSession(sessionId)
+    })
     const unsubInfo = window.forgeterm.onSessionInfoUpdated((sessionId, info) => {
       useSessionStore.getState().setSessionInfo(sessionId, info)
     })
@@ -222,7 +227,7 @@ function App() {
       const viewing = st.activeSessionId === sessionId && document.hasFocus()
       st.applyActivitySignal(sessionId, signal, viewing)
     })
-    return () => { unsubRename(); unsubInfo(); unsubContext(); unsubConversation(); unsubActivity() }
+    return () => { unsubRename(); unsubClosed(); unsubInfo(); unsubContext(); unsubConversation(); unsubActivity() }
   }, [])
 
   // Listen for session exits
@@ -425,6 +430,12 @@ function App() {
         }
       }
 
+      // Cmd+Shift+F: search across all open sessions
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        setShowGlobalSearch(true)
+      }
+
       // Cmd+W: delete active session
       if (mod && !e.shiftKey && e.key === 'w') {
         e.preventDefault()
@@ -503,6 +514,7 @@ function App() {
         setShowHelp(false)
         setShowCliInstall(false)
         setShowRemoteAccess(false)
+        setShowGlobalSearch(false)
         setInfoPanelSessionId(null)
       }
     }
@@ -549,6 +561,15 @@ function App() {
     setActive(sessionId)
     setInfoPanelSessionId(null)
   }, [setRunning, setActive])
+
+  const handleRevealMatch = useCallback((sessionId: string, line: number, col: number, length: number) => {
+    const wasActive = useSessionStore.getState().activeSessionId === sessionId
+    setActive(sessionId)
+    setShowGlobalSearch(false)
+    // When switching sessions, the activation effect scrolls the terminal to the
+    // bottom in a rAF; wait for that before scrolling to the match so it wins.
+    setTimeout(() => revealTerminalMatch(sessionId, line, col, length), wasActive ? 0 : 130)
+  }, [setActive])
 
   const handleSaveTheme = useCallback(async (updatedConfig: ForgeTermConfig) => {
     setShowThemeEditor(false)
@@ -605,6 +626,18 @@ function App() {
           {displayName}
         </span>
         <div className="titlebar-actions">
+          <button
+            className="titlebar-action-btn"
+            onClick={() => setShowGlobalSearch(true)}
+            title={`Search All Sessions (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}⇧F)`}
+            style={{ background: 'rgba(255,255,255,0.1)', color: titlebarFg }}
+          >
+            {/* Magnifier */}
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="7" cy="7" r="4.5" />
+              <line x1="10.5" y1="10.5" x2="14" y2="14" />
+            </svg>
+          </button>
           <button
             className="titlebar-action-btn"
             onClick={() => window.forgeterm.revealInFinder()}
@@ -794,6 +827,15 @@ function App() {
         <RemoteAccessModal
           accentColor={accentColor}
           onClose={() => setShowRemoteAccess(false)}
+        />
+      )}
+
+      {showGlobalSearch && (
+        <GlobalSearch
+          sessions={sessions}
+          accentColor={accentColor}
+          onReveal={handleRevealMatch}
+          onClose={() => setShowGlobalSearch(false)}
         />
       )}
 

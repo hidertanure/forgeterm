@@ -33,6 +33,11 @@ let unsubSharedDataListener: (() => void) | null = null
 // Search toggle registry - allows App to trigger search via Cmd+F
 const searchToggles = new Map<string, () => void>()
 
+// Last time each session emitted output (epoch ms). Updated on every data chunk
+// without touching React state, so it stays cheap. Used to rank global search
+// results so the most recently active sessions surface first.
+const lastOutputAt = new Map<string, number>()
+
 function ensureSharedDataListener() {
   if (unsubSharedDataListener) return
   unsubSharedDataListener = window.forgeterm.onSessionData((id, data) => {
@@ -148,6 +153,7 @@ export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
     // Register data handler via shared listener (1 IPC listener for all terminals)
     ensureSharedDataListener()
     dataHandlers.set(sessionId, (data) => {
+      lastOutputAt.set(sessionId, Date.now())
       terminal.write(data, () => {
         // Check the CURRENT value of isAtBottomRef, not a captured snapshot.
         // terminal.write() queues data for processing in an animation frame,
@@ -627,4 +633,64 @@ export function selectAllTerminal(sessionId: string) {
 
 export function toggleTerminalSearch(sessionId: string) {
   searchToggles.get(sessionId)?.()
+}
+
+export interface GlobalSearchMatch {
+  sessionId: string
+  /** Absolute line index in the buffer (including scrollback). */
+  line: number
+  /** Column where the match starts within the line. */
+  col: number
+  /** The full (right-trimmed) line text, for previewing with the match highlighted. */
+  preview: string
+}
+
+/** Epoch ms of the session's most recent output (0 if it has never produced any). */
+export function getSessionLastOutput(sessionId: string): number {
+  return lastOutputAt.get(sessionId) ?? 0
+}
+
+/**
+ * Search every open session's scrollback for `query` (case-insensitive substring).
+ * Scans each buffer bottom-up so that, when a session is capped, the matches kept
+ * are the most recent ones. Returns matches grouped by session id.
+ */
+export function searchAllTerminals(query: string, perSessionLimit = 80): Map<string, GlobalSearchMatch[]> {
+  const out = new Map<string, GlobalSearchMatch[]>()
+  const needle = query.toLowerCase()
+  if (!needle) return out
+  for (const [sessionId, entry] of terminals) {
+    const buf = entry.terminal.buffer.active
+    const matches: GlobalSearchMatch[] = []
+    for (let i = buf.length - 1; i >= 0 && matches.length < perSessionLimit; i--) {
+      const line = buf.getLine(i)
+      if (!line) continue
+      const text = line.translateToString(true)
+      if (!text) continue
+      const idx = text.toLowerCase().indexOf(needle)
+      if (idx !== -1) {
+        matches.push({ sessionId, line: i, col: idx, preview: text })
+      }
+    }
+    if (matches.length) out.set(sessionId, matches)
+  }
+  return out
+}
+
+/**
+ * Scroll a session's terminal so the matched line is in view and select the match
+ * so it is visibly highlighted. Coordinates are absolute buffer positions.
+ */
+export function revealTerminalMatch(sessionId: string, line: number, col: number, length: number) {
+  const entry = terminals.get(sessionId)
+  if (!entry) return
+  const { terminal } = entry
+  // Put the match a few rows below the viewport top so there's leading context.
+  terminal.scrollToLine(Math.max(0, line - 3))
+  try {
+    terminal.select(col, line, length)
+  } catch {
+    /* Match fell outside the current buffer range; scrolling alone still helps. */
+  }
+  terminal.focus()
 }

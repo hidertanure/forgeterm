@@ -188,6 +188,19 @@ cmd_rename() {
   check_response "$response" true || exit 1
 }
 
+cmd_close() {
+  if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    echo "Usage: ft close - Close (delete) the current terminal session, like Cmd+W"
+    exit 0
+  fi
+  require_session
+
+  local json="{\"command\":\"close\",\"projectPath\":$(json_string "$FORGETERM_PROJECT_PATH"),\"sessionId\":$(json_string "$FORGETERM_SESSION_ID")}"
+  local response
+  response=$(send_to_socket "$json") || exit 1
+  check_response "$response" true || exit 1
+}
+
 cmd_info() {
   if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     echo 'Usage: ft info --title "..." --summary "..." --last "..." [--action "..."]'
@@ -793,6 +806,7 @@ Usage: ft <command> [options]
 Direct commands:
   notify "message"        Send a native notification
   rename "name"           Rename current session
+  close                   Close (delete) the current session, like Cmd+W
   info                    Update session info card
   context <0-100>         Report context window usage %
   conversation <id>       Link session to a Claude conversation ID
@@ -818,6 +832,7 @@ case "${1:-}" in
   # Direct commands (backward-compatible)
   notify)    shift; cmd_notify "$@" ;;
   rename)    shift; cmd_rename "$@" ;;
+  close)     shift; cmd_close "$@" ;;
   info)      shift; cmd_info "$@" ;;
   context)   shift; cmd_context "$@" ;;
   conversation) shift; cmd_conversation "$@" ;;

@@ -1062,13 +1062,11 @@ function saveWindowSessionState(state: WindowState) {
   }))
 
   const activeSession = sessions.find(s => s.id === state.activeSessionId)
-  const existing = allSaved.find(s => s.projectPath === state.projectPath)
   filtered.push({
     projectPath: state.projectPath,
     sessions: savedSessions,
     activeSessionName: activeSession?.name,
     savedAt: Date.now(),
-    gridLayout: existing?.gridLayout,
   })
   saveSavedSessions(filtered)
 }
@@ -2767,6 +2765,17 @@ function setupIpcHandlers() {
     const allSaved = loadSavedSessions()
     const entry = allSaved.find(s => s.projectPath === state.projectPath)
     return entry?.gridLayout ?? null
+  })
+
+  ipcMain.handle('sessions:clear-grid-layout', (event) => {
+    const state = getStateForEvent(event)
+    if (!state?.projectPath) return
+    const allSaved = loadSavedSessions()
+    const entry = allSaved.find(s => s.projectPath === state.projectPath)
+    if (entry) {
+      delete entry.gridLayout
+      saveSavedSessions(allSaved)
+    }
   })
 
   ipcMain.handle('session:delete', (event, id: string) => {

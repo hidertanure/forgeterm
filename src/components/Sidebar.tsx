@@ -294,7 +294,12 @@ export function Sidebar({
           className="sidebar-action-btn"
           onClick={() => {
             const st = useSessionStore.getState()
-            st.setViewMode(st.viewMode === 'grid' ? 'sidebar' : 'grid')
+            const next = st.viewMode === 'grid' ? 'sidebar' : 'grid'
+            st.setViewMode(next)
+            if (next === 'sidebar') {
+              window.forgeterm.clearGridLayout()
+              st.setGridLayout({})
+            }
           }}
           title="Toggle Grid Layout"
           style={{ background: btnBg, color: sidebarFg }}

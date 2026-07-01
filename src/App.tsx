@@ -734,7 +734,14 @@ function App() {
           </button>
           <button
             className={'titlebar-action-btn' + (viewMode === 'grid' ? ' active' : '')}
-            onClick={() => setViewMode(viewMode === 'grid' ? 'sidebar' : 'grid')}
+            onClick={() => {
+              const next = viewMode === 'grid' ? 'sidebar' : 'grid'
+              setViewMode(next)
+              if (next === 'sidebar') {
+                window.forgeterm.clearGridLayout()
+                useSessionStore.getState().setGridLayout({})
+              }
+            }}
             title={viewMode === 'grid' ? 'Sidebar View' : 'Grid Layout'}
             style={{ background: 'rgba(255,255,255,0.1)', color: titlebarFg }}
           >

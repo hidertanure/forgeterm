@@ -32,6 +32,8 @@ export function GridLayout({
   useEffect(() => {
     if (sessions.length === 0) {
       setViewMode('sidebar')
+      useSessionStore.getState().setGridLayout({})
+      window.forgeterm.clearGridLayout()
     }
   }, [sessions.length, setViewMode])
 

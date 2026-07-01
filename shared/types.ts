@@ -409,6 +409,7 @@ export interface ForgeTermAPI {
   clearSavedSessions: () => Promise<void>
   saveGridLayout: (state: GridLayoutPersisted) => Promise<void>
   getGridLayout: () => Promise<GridLayoutPersisted | null>
+  clearGridLayout: () => Promise<void>
   deleteSession: (id: string) => Promise<void>
   checkClaudeConnection: () => Promise<ClaudeConnectionStatus>
   getClaudeSetupPrompt: () => Promise<string>

@@ -378,6 +378,9 @@ const api: ForgeTermAPI = {
   getGridLayout: () =>
     ipcRenderer.invoke('sessions:get-grid-layout'),
 
+  clearGridLayout: () =>
+    ipcRenderer.invoke('sessions:clear-grid-layout'),
+
   deleteSession: (id: string) =>
     ipcRenderer.invoke('session:delete', id),
 

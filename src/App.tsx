@@ -35,7 +35,7 @@ const isDashboard = new URLSearchParams(window.location.search).get('mode') === 
 function App() {
   if (isDashboard) return <Dashboard />
 
-  const { sessions, activeSessionId, addSession, setRunning, setActive, removeSession } = useSessionStore()
+  const { sessions, activeSessionId, addSession, setRunning, setActive, removeSession, viewMode, setViewMode } = useSessionStore()
   const [config, setConfig] = useState<ForgeTermConfig | null>(null)
   const [claudeLaunch, setClaudeLaunch] = useState<ClaudeLaunch>(DEFAULT_CLAUDE_LAUNCH)
   const [showModal, setShowModal] = useState(false)
@@ -718,6 +718,19 @@ function App() {
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="4.5" />
               <line x1="10.5" y1="10.5" x2="14" y2="14" />
+            </svg>
+          </button>
+          <button
+            className={'titlebar-action-btn' + (viewMode === 'grid' ? ' active' : '')}
+            onClick={() => setViewMode(viewMode === 'grid' ? 'sidebar' : 'grid')}
+            title={viewMode === 'grid' ? 'Sidebar View' : 'Grid Layout'}
+            style={{ background: 'rgba(255,255,255,0.1)', color: titlebarFg }}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" fill={viewMode === 'grid' ? 'currentColor' : 'none'} opacity={viewMode === 'grid' ? '0.3' : '1'} />
+              <rect x="9" y="1.5" width="5.5" height="5.5" rx="1" />
+              <rect x="1.5" y="9" width="5.5" height="5.5" rx="1" />
+              <rect x="9" y="9" width="5.5" height="5.5" rx="1" />
             </svg>
           </button>
           <button

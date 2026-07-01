@@ -292,6 +292,22 @@ export function Sidebar({
         </button>
         <button
           className="sidebar-action-btn"
+          onClick={() => {
+            const st = useSessionStore.getState()
+            st.setViewMode(st.viewMode === 'grid' ? 'sidebar' : 'grid')
+          }}
+          title="Toggle Grid Layout"
+          style={{ background: btnBg, color: sidebarFg }}
+        >
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" />
+            <rect x="9" y="1.5" width="5.5" height="5.5" rx="1" />
+            <rect x="1.5" y="9" width="5.5" height="5.5" rx="1" />
+            <rect x="9" y="9" width="5.5" height="5.5" rx="1" />
+          </svg>
+        </button>
+        <button
+          className="sidebar-action-btn"
           onClick={onProjectSettings}
           title="Project Settings (Cmd+,)"
           style={{ background: btnBg, color: sidebarFg }}

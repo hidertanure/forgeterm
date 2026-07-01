@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { useSessionStore } from '../store/sessionStore'
 import { PanelTitleBar } from './PanelTitleBar'
 import { TerminalView } from './TerminalView'
@@ -8,6 +9,7 @@ interface GridPanelProps {
   isFocused: boolean
   accentColor: string
   config: ForgeTermConfig | null
+  draggable: boolean
   onFocus: () => void
   onInfoToggle?: () => void
   onDrop: (e: React.DragEvent) => void
@@ -18,38 +20,53 @@ export function GridPanel({
   isFocused,
   accentColor,
   config,
+  draggable,
   onFocus,
   onInfoToggle,
   onDrop,
 }: GridPanelProps) {
   const session = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
+  const [dragging, setDragging] = useState(false)
 
   if (!session) return null
 
-  const handleDragStart = (e: React.DragEvent) => {
+  const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('text/plain', sessionId)
     e.dataTransfer.effectAllowed = 'move'
-  }
+    setDragging(true)
+  }, [sessionId])
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragEnd = useCallback(() => {
+    setDragging(false)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    if (dragging) return
     e.currentTarget.classList.add('drop-target')
-  }
+  }, [dragging])
 
-  const handleDragLeave = (e: React.DragEvent) => {
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
     e.currentTarget.classList.remove('drop-target')
-  }
+  }, [])
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.currentTarget.classList.remove('drop-target')
+    setDragging(false)
     onDrop(e)
-  }
+  }, [onDrop])
 
   return (
     <div
-      className={'grid-panel' + (isFocused ? ' focused' : '')}
+      className={'grid-panel' + (isFocused ? ' focused' : '') + (dragging ? ' dragging' : '')}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -62,8 +79,10 @@ export function GridPanel({
         activityStatus={session.activityStatus}
         contextPercent={session.contextPercent}
         accentColor={accentColor}
+        draggable={draggable}
         onFocus={onFocus}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onInfoToggle={onInfoToggle}
       />
       <TerminalView

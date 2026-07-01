@@ -9,8 +9,10 @@ interface PanelTitleBarProps {
   activityStatus: SessionActivityStatus
   contextPercent?: number
   accentColor: string
+  draggable?: boolean
   onFocus: () => void
   onDragStart: (e: React.DragEvent) => void
+  onDragEnd?: () => void
   onInfoToggle?: () => void
 }
 
@@ -22,15 +24,18 @@ export function PanelTitleBar({
   activityStatus,
   contextPercent,
   accentColor,
+  draggable = true,
   onFocus,
   onDragStart,
+  onDragEnd,
   onInfoToggle,
 }: PanelTitleBarProps) {
   return (
     <div
       className={'panel-titlebar' + (isFocused ? ' focused' : '')}
-      draggable
+      draggable={draggable}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onFocus}
     >
       <span className="panel-titlebar-status">

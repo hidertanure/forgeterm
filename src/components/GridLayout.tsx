@@ -95,6 +95,7 @@ export function GridLayout({
                         isFocused={id === activeSessionId}
                         accentColor={accentColor}
                         config={config}
+                        draggable={sessions.length > 1}
                         onFocus={() => setActive(id)}
                         onDrop={handleDrop(id)}
                       />

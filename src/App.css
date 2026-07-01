@@ -3885,3 +3885,119 @@
   opacity: 1;
   background: rgba(255, 255, 255, 0.05);
 }
+
+/* ── Grid Layout ── */
+
+.grid-layout {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.grid-layout [data-group] {
+  height: 100%;
+}
+
+.grid-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  transition: border-color 0.2s, opacity 0.2s;
+  overflow: hidden;
+}
+
+.grid-panel.focused {
+  border-color: var(--accent-color, #38bdf8);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);
+}
+
+.grid-panel.dragging {
+  opacity: 0.5;
+}
+
+.grid-panel.drop-target {
+  border-color: var(--accent-color, #38bdf8);
+  border-style: dashed;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+}
+
+.panel-titlebar {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  height: 28px;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: grab;
+  user-select: none;
+  font-size: 12px;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.panel-titlebar:active {
+  cursor: grabbing;
+}
+
+.panel-titlebar.focused {
+  color: var(--accent-color, #38bdf8);
+}
+
+.panel-titlebar-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.panel-titlebar-dot {
+  flex-shrink: 0;
+}
+
+.panel-titlebar-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.panel-titlebar-info {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-titlebar-info:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.grid-info-overlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: rgba(15, 23, 42, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.titlebar-action-btn.active {
+  background: var(--accent-color, #38bdf8) !important;
+  color: #0f172a !important;
+}

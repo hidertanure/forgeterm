@@ -2072,6 +2072,9 @@ function setupIpcHandlers() {
   ipcMain.handle('projects:open', (event, projectPath: string) => {
     const sourceWin = BrowserWindow.fromWebContents(event.sender)
     const targetWin = focusOrCreateWindow(projectPath)
+    if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+      dashboardWindow.close()
+    }
     // Ensure new window gets focus after the source window's modal dismissal
     if (sourceWin && targetWin !== sourceWin) {
       setTimeout(() => targetWin.focus(), 100)
@@ -2100,6 +2103,9 @@ function setupIpcHandlers() {
       const windows: BrowserWindow[] = []
       for (const projectPath of enabledPaths) {
         windows.push(focusOrCreateWindow(projectPath))
+      }
+      if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+        dashboardWindow.close()
       }
       if (arrange) {
         // Look up screen preferences for current display count

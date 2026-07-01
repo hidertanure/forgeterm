@@ -13,6 +13,7 @@ interface TerminalViewProps {
   active: boolean
   config: ForgeTermConfig | null
   variant?: 'tab' | 'grid'
+  onFocus?: () => void
 }
 
 interface DropMenuState {
@@ -86,7 +87,7 @@ async function executeDrop(sessionId: string, action: 'path' | 'content' | 'copy
   }
 }
 
-export function TerminalView({ sessionId, active, config, variant = 'tab' }: TerminalViewProps) {
+export function TerminalView({ sessionId, active, config, variant = 'tab', onFocus }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const cleanupRef = useRef<(() => void) | null>(null)
@@ -167,8 +168,6 @@ export function TerminalView({ sessionId, active, config, variant = 'tab' }: Ter
       })
 
       // Activity tracking: mark non-active sessions as working.
-      // Skip sessions driven by precise Claude hooks (`ft activity`) so the
-      // output heuristic doesn't fight the authoritative signal.
       const store = useSessionStore.getState()
       const trackedSession = store.sessions.find((s) => s.id === sessionId)
       if (!trackedSession?.hookManaged && store.activeSessionId !== sessionId) {
@@ -508,7 +507,7 @@ export function TerminalView({ sessionId, active, config, variant = 'tab' }: Ter
   }, [sessionId, dropMenu])
 
   return (
-    <div className="terminal-wrapper" style={{ display: (variant === 'grid' || active) ? 'block' : 'none' }}>
+    <div className="terminal-wrapper" style={{ display: (variant === 'grid' || active) ? 'block' : 'none' }} onMouseDown={onFocus}>
       {active && showSearch && (
         <div className="terminal-search-bar">
           <input

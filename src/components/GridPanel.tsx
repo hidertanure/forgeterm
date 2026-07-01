@@ -95,6 +95,7 @@ export function GridPanel({
         active={isFocused}
         config={config}
         variant="grid"
+        onFocus={onFocus}
       />
     </div>
   )

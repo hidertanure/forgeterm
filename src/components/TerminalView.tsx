@@ -12,6 +12,7 @@ interface TerminalViewProps {
   sessionId: string
   active: boolean
   config: ForgeTermConfig | null
+  variant?: 'tab' | 'grid'
 }
 
 interface DropMenuState {
@@ -85,7 +86,7 @@ async function executeDrop(sessionId: string, action: 'path' | 'content' | 'copy
   }
 }
 
-export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
+export function TerminalView({ sessionId, active, config, variant = 'tab' }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const cleanupRef = useRef<(() => void) | null>(null)
@@ -334,13 +335,16 @@ export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
       if (entry) {
         requestAnimationFrame(() => {
           entry.fitAddon.fit()
-          // Force full re-render - needed when transitioning from display:none
-          entry.terminal.refresh(0, entry.terminal.rows - 1)
+          if (variant === 'tab') {
+            entry.terminal.refresh(0, entry.terminal.rows - 1)
+          }
           window.forgeterm.resizeSession(sessionId, entry.terminal.cols, entry.terminal.rows)
           entry.terminal.scrollToBottom()
           isAtBottomRef.current = true
           setIsScrolledUp(false)
-          entry.terminal.focus()
+          if (variant === 'tab') {
+            entry.terminal.focus()
+          }
         })
       }
     }
@@ -490,7 +494,7 @@ export function TerminalView({ sessionId, active, config }: TerminalViewProps) {
   }, [sessionId, dropMenu])
 
   return (
-    <div className="terminal-wrapper" style={{ display: active ? 'block' : 'none' }}>
+    <div className="terminal-wrapper" style={{ display: (variant === 'grid' || active) ? 'block' : 'none' }}>
       {active && showSearch && (
         <div className="terminal-search-bar">
           <input

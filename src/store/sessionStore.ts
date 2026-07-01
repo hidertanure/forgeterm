@@ -15,11 +15,15 @@ export interface Session {
   hookManaged?: boolean
 }
 
+type ViewMode = 'sidebar' | 'grid'
+
 interface SessionStore {
   sessions: Session[]
   activeSessionId: string | null
   // Transient signal: when set, the Sidebar opens inline rename for this session.
   renameRequestId: string | null
+  viewMode: ViewMode
+  gridLayout: { [sessionId: string]: number }
   addSession: (session: Omit<Session, 'activityStatus'>) => void
   removeSession: (id: string) => void
   setActive: (id: string) => void
@@ -33,6 +37,9 @@ interface SessionStore {
   applyActivitySignal: (id: string, signal: SessionActivitySignal, viewing: boolean) => void
   requestRename: (id: string) => void
   clearRenameRequest: () => void
+  setViewMode: (mode: ViewMode) => void
+  setGridLayout: (layout: { [sessionId: string]: number }) => void
+  swapGridPanels: (fromId: string, toId: string) => void
 }
 
 export const useSessionStore = create<SessionStore>((set) => ({
@@ -149,4 +156,21 @@ export const useSessionStore = create<SessionStore>((set) => ({
 
   requestRename: (id) => set({ renameRequestId: id }),
   clearRenameRequest: () => set({ renameRequestId: null }),
+
+  viewMode: 'sidebar',
+  gridLayout: {},
+
+  setViewMode: (mode) => set({ viewMode: mode }),
+
+  setGridLayout: (layout) => set({ gridLayout: layout }),
+
+  swapGridPanels: (fromId, toId) =>
+    set((state) => {
+      const fromIdx = state.sessions.findIndex((s) => s.id === fromId)
+      const toIdx = state.sessions.findIndex((s) => s.id === toId)
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return state
+      const sessions = [...state.sessions]
+      ;[sessions[fromIdx], sessions[toIdx]] = [sessions[toIdx], sessions[fromIdx]]
+      return { sessions }
+    }),
 }))

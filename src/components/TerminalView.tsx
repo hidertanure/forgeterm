@@ -341,9 +341,7 @@ export function TerminalView({ sessionId, active, config, variant = 'tab', onFoc
           entry.terminal.scrollToBottom()
           isAtBottomRef.current = true
           setIsScrolledUp(false)
-          if (variant === 'tab') {
-            entry.terminal.focus()
-          }
+          entry.terminal.focus()
         })
       }
     }

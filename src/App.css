@@ -3915,7 +3915,7 @@
   transition: border-color 0.2s, opacity 0.2s;
   overflow: hidden;
   position: relative;
-  margin: 2px;
+  padding: 2px;
 }
 
 .grid-panel .terminal-wrapper {

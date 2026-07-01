@@ -1,4 +1,6 @@
+import { useState, useRef, useEffect } from 'react'
 import type { SessionActivityStatus } from '../../shared/types'
+import { useSessionStore } from '../store/sessionStore'
 import { ContextCircle } from './ContextCircle'
 
 interface PanelTitleBarProps {
@@ -10,10 +12,12 @@ interface PanelTitleBarProps {
   contextPercent?: number
   accentColor: string
   draggable?: boolean
+  renameRequested?: boolean
   onFocus: () => void
   onDragStart: (e: React.DragEvent) => void
   onDragEnd?: () => void
   onInfoToggle?: () => void
+  onRenameRequest?: (id: string) => void
 }
 
 export function PanelTitleBar({
@@ -25,15 +29,51 @@ export function PanelTitleBar({
   contextPercent,
   accentColor,
   draggable = true,
+  renameRequested = false,
   onFocus,
   onDragStart,
   onDragEnd,
   onInfoToggle,
+  onRenameRequest,
 }: PanelTitleBarProps) {
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(name)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (renameRequested) {
+      setEditValue(name)
+      setEditing(true)
+      useSessionStore.getState().clearRenameRequest()
+    }
+  }, [renameRequested, name])
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const handleSubmitRename = () => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== name) {
+      useSessionStore.getState().renameSession(sessionId, trimmed)
+      window.forgeterm.renameSession(sessionId, trimmed)
+    }
+    setEditing(false)
+  }
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditValue(name)
+    setEditing(true)
+  }
+
   return (
     <div
       className={'panel-titlebar' + (isFocused ? ' focused' : '')}
-      draggable={draggable}
+      draggable={!editing && draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onFocus}
@@ -62,7 +102,23 @@ export function PanelTitleBar({
           />
         )}
       </span>
-      <span className="panel-titlebar-name">{name}</span>
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="panel-titlebar-input"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={handleSubmitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSubmitRename()
+            if (e.key === 'Escape') setEditing(false)
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <span className="panel-titlebar-name" onDoubleClick={handleDoubleClick}>{name}</span>
+      )}
       {onInfoToggle && (
         <button
           className="panel-titlebar-info"

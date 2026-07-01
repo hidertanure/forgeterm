@@ -3987,6 +3987,18 @@
   border-color: rgba(255, 255, 255, 0.4);
 }
 
+.panel-titlebar-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--accent-color, #38bdf8);
+  border-radius: 3px;
+  color: #e2e8f0;
+  font-size: 12px;
+  padding: 1px 4px;
+  outline: none;
+  min-width: 0;
+}
+
 .grid-info-overlay {
   position: absolute;
   top: 0;

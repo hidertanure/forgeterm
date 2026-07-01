@@ -13,6 +13,7 @@ interface GridPanelProps {
   onFocus: () => void
   onInfoToggle?: () => void
   onDrop: (e: React.DragEvent) => void
+  onRename?: (id: string) => void
 }
 
 export function GridPanel({
@@ -24,8 +25,10 @@ export function GridPanel({
   onFocus,
   onInfoToggle,
   onDrop,
+  onRename,
 }: GridPanelProps) {
   const session = useSessionStore((s) => s.sessions.find((x) => x.id === sessionId))
+  const renameRequestId = useSessionStore((s) => s.renameRequestId)
   const [dragging, setDragging] = useState(false)
 
   if (!session) return null
@@ -80,10 +83,12 @@ export function GridPanel({
         contextPercent={session.contextPercent}
         accentColor={accentColor}
         draggable={draggable}
+        renameRequested={renameRequestId === sessionId}
         onFocus={onFocus}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onInfoToggle={onInfoToggle}
+        onRenameRequest={onRename}
       />
       <TerminalView
         sessionId={sessionId}

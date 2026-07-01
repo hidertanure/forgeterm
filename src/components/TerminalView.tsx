@@ -350,6 +350,20 @@ export function TerminalView({ sessionId, active, config, variant = 'tab' }: Ter
     }
   }, [active, sessionId])
 
+  // When switching to grid mode, fit and refresh all terminals so they render
+  useEffect(() => {
+    if (variant === 'grid') {
+      const entry = terminals.get(sessionId)
+      if (entry) {
+        requestAnimationFrame(() => {
+          entry.fitAddon.fit()
+          entry.terminal.refresh(0, entry.terminal.rows - 1)
+          window.forgeterm.resizeSession(sessionId, entry.terminal.cols, entry.terminal.rows)
+        })
+      }
+    }
+  }, [variant, sessionId])
+
   // Update theme when config changes
   useEffect(() => {
     const entry = terminals.get(sessionId)

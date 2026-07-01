@@ -166,11 +166,18 @@ export interface ClaudeLaunch {
   resumeArgs: string[]
 }
 
+export interface GridLayoutPersisted {
+  mode: 'grid'
+  layout: { [sessionId: string]: number }
+  activeSessionId: string
+}
+
 export interface SavedWindowState {
   projectPath: string
   sessions: SavedSession[]
   activeSessionName?: string
   savedAt: number
+  gridLayout?: GridLayoutPersisted
 }
 
 export interface HistoricalSession {
@@ -400,6 +407,8 @@ export interface ForgeTermAPI {
   areClaudeHooksInstalled: () => Promise<boolean>
   getSavedSessions: () => Promise<SavedWindowState | null>
   clearSavedSessions: () => Promise<void>
+  saveGridLayout: (state: GridLayoutPersisted) => Promise<void>
+  getGridLayout: () => Promise<GridLayoutPersisted | null>
   deleteSession: (id: string) => Promise<void>
   checkClaudeConnection: () => Promise<ClaudeConnectionStatus>
   getClaudeSetupPrompt: () => Promise<string>

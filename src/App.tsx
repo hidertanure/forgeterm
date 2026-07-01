@@ -16,7 +16,7 @@ import { Dashboard } from './components/Dashboard'
 import { UpdateBanner } from './components/UpdateBanner'
 import { ClaudeConnectionBanner } from './components/ClaudeConnectionBanner'
 import { useSessionStore } from './store/sessionStore'
-import type { ForgeTermConfig, CliStatus, ClaudeLaunch, HistoricalSession } from '../shared/types'
+import type { ForgeTermConfig, CliStatus, ClaudeLaunch, HistoricalSession, GridLayoutPersisted } from '../shared/types'
 import type { WindowTheme } from './themes'
 import { generateWindowTheme, adjustAccentBrightness, getTerminalTheme } from './themes'
 import './App.css'
@@ -102,13 +102,14 @@ function App() {
     initializedRef.current = true
 
     async function init() {
-      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState, launch] = await Promise.all([
+      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState, savedGridLayout, launch] = await Promise.all([
         window.forgeterm.getProjectConfig(),
         window.forgeterm.getProjectPath(),
         window.forgeterm.getSidebarMode(),
         window.forgeterm.getSidebarWidth(),
         window.forgeterm.hasProject(),
         window.forgeterm.getSavedSessions(),
+        window.forgeterm.getGridLayout(),
         window.forgeterm.getClaudeLaunch(),
       ])
 
@@ -160,6 +161,16 @@ function App() {
         if (savedState.activeSessionName) {
           const match = useSessionStore.getState().sessions.find(s => s.name === savedState.activeSessionName)
           if (match) useSessionStore.getState().setActive(match.id)
+        }
+
+        if (savedGridLayout) {
+          const st = useSessionStore.getState()
+          st.setViewMode('grid')
+          st.setGridLayout(savedGridLayout.layout)
+          if (savedGridLayout.activeSessionId) {
+            const match = st.sessions.find(s => s.id === savedGridLayout.activeSessionId)
+            if (match) st.setActive(match.id)
+          }
         }
 
         await window.forgeterm.clearSavedSessions()
@@ -880,6 +891,17 @@ function App() {
           <GridLayout
             accentColor={accentColor}
             config={config}
+            onCombinedLayoutChange={(layout) => {
+              const st = useSessionStore.getState()
+              const state: GridLayoutPersisted = {
+                mode: 'grid',
+                layout,
+                activeSessionId: st.activeSessionId ?? '',
+              }
+              st.setGridLayout(layout)
+              window.forgeterm.saveGridLayout(state)
+            }}
+            defaultLayout={viewMode === 'grid' ? useSessionStore.getState().gridLayout : undefined}
           />
         )}
         {viewMode === 'grid' && infoPanelSessionId && (() => {

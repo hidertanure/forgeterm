@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { execSync, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PtyManager } from './ptyManager'
-import type { ForgeTermConfig, RecentProject, Workspace, ImportResult, FavoriteTheme, DetectedEditor, UpdateInfo, SessionTemplate, SessionStatusReport, SavedSession, SavedWindowState, SessionContext, HistoricalSession, SessionHistoryFilter, DashboardState, DashboardProject, DashboardSession, DashboardWorkspace, TranscriptSearchTarget } from '../shared/types'
+import type { ForgeTermConfig, RecentProject, Workspace, ImportResult, FavoriteTheme, DetectedEditor, UpdateInfo, SessionTemplate, SessionStatusReport, SavedSession, SavedWindowState, GridLayoutPersisted, SessionContext, HistoricalSession, SessionHistoryFilter, DashboardState, DashboardProject, DashboardSession, DashboardWorkspace, TranscriptSearchTarget } from '../shared/types'
 import { searchTranscripts } from './claudeTranscript'
 import crypto from 'node:crypto'
 import { UpdateManager } from './updater'
@@ -1062,11 +1062,13 @@ function saveWindowSessionState(state: WindowState) {
   }))
 
   const activeSession = sessions.find(s => s.id === state.activeSessionId)
+  const existing = allSaved.find(s => s.projectPath === state.projectPath)
   filtered.push({
     projectPath: state.projectPath,
     sessions: savedSessions,
     activeSessionName: activeSession?.name,
     savedAt: Date.now(),
+    gridLayout: existing?.gridLayout,
   })
   saveSavedSessions(filtered)
 }
@@ -2733,6 +2735,32 @@ function setupIpcHandlers() {
     const allSaved = loadSavedSessions()
     const filtered = allSaved.filter(s => s.projectPath !== state.projectPath)
     saveSavedSessions(filtered)
+  })
+
+  ipcMain.handle('sessions:set-grid-layout', (event, gridState: GridLayoutPersisted) => {
+    const state = getStateForEvent(event)
+    if (!state?.projectPath) return
+    const allSaved = loadSavedSessions()
+    const idx = allSaved.findIndex(s => s.projectPath === state.projectPath)
+    if (idx >= 0) {
+      allSaved[idx] = { ...allSaved[idx], gridLayout: gridState }
+    } else {
+      allSaved.push({
+        projectPath: state.projectPath!,
+        sessions: [],
+        savedAt: Date.now(),
+        gridLayout: gridState,
+      })
+    }
+    saveSavedSessions(allSaved)
+  })
+
+  ipcMain.handle('sessions:get-grid-layout', (event) => {
+    const state = getStateForEvent(event)
+    if (!state?.projectPath) return null
+    const allSaved = loadSavedSessions()
+    const entry = allSaved.find(s => s.projectPath === state.projectPath)
+    return entry?.gridLayout ?? null
   })
 
   ipcMain.handle('session:delete', (event, id: string) => {

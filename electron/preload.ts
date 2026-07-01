@@ -372,6 +372,12 @@ const api: ForgeTermAPI = {
   clearSavedSessions: () =>
     ipcRenderer.invoke('sessions:clear-saved'),
 
+  saveGridLayout: (state) =>
+    ipcRenderer.invoke('sessions:set-grid-layout', state),
+
+  getGridLayout: () =>
+    ipcRenderer.invoke('sessions:get-grid-layout'),
+
   deleteSession: (id: string) =>
     ipcRenderer.invoke('session:delete', id),
 

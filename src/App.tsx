@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView, clearTerminal, scrollTerminalToTop, scrollTerminalToBottom, selectAllTerminal, toggleTerminalSearch, revealTerminalMatch } from './components/TerminalView'
+import { GridLayout } from './components/GridLayout'
 import { GlobalSearch } from './components/GlobalSearch'
 import { ProjectHistory } from './components/ProjectHistory'
 import { NewSessionModal } from './components/NewSessionModal'
@@ -779,72 +780,74 @@ function App() {
       </div>
       <UpdateBanner accentColor={accentColor} />
       <div className="main-layout">
-        {sidebarMode !== 'hidden' && (
-          <Sidebar
-            mode={sidebarMode}
-            accentColor={accentColor}
-            sidebarBackground={sidebarBg}
-            sidebarForeground={sidebarFg}
-            buttonBackground={buttonBg}
-            width={sidebarWidth}
-            onWidthChange={handleSidebarWidthChange}
-            onNewSession={() => setShowModal(true)}
-            onQuickSession={async () => {
-              const id = await window.forgeterm.createSession('shell')
-              if (id) {
-                addSession({ id, name: 'shell', running: true })
-                setActive(id)
-              }
-            }}
-            onDuplicateSession={(name, command) => createSession(name, command)}
-            onProjectSettings={() => setShowProjectSettings(true)}
-            onThemeEditor={() => setShowThemeEditor(true)}
-            onHelp={() => setShowHelp(true)}
-            onCli={() => setShowCliInstall(true)}
-            onRemote={() => setShowRemoteAccess(true)}
-            onInfoPanel={(id) => setInfoPanelSessionId(infoPanelSessionId === id ? null : id)}
-            cliStatus={cliStatus}
-            remoteRunning={remoteRunning}
-          />
-        )}
-        {infoPanelSessionId && (() => {
-          const panelSession = sessions.find(s => s.id === infoPanelSessionId)
-          return panelSession ? (
-            <SessionInfoPanel
-              session={panelSession}
-              accentColor={accentColor}
-              onClose={() => setInfoPanelSessionId(null)}
-              onResume={handleResumeSession}
-              onResumeInPlace={handleResumeInPlace}
-            />
-          ) : null
-        })()}
-        <div className={`terminal-area${sidebarMode === 'hidden' || showCliPrompt ? ' has-floating' : ''}`}>
-          {sessions.map((session) => (
-            <TerminalView
-              key={session.id}
-              sessionId={session.id}
-              active={session.id === activeSessionId}
-              config={config}
-            />
-          ))}
-          {sessions.length === 0 && (
-            <div className="empty-state">
-              <p>No sessions. Press Cmd+N to create one.</p>
-            </div>
-          )}
-          {sidebarMode === 'hidden' && (
-            <div className="floating-actions">
-              <button className="sidebar-action-btn" onClick={() => setShowModal(true)} title="New Session (Cmd+N)" style={{ background: buttonBg, color: sidebarFg }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 3v10M3 8h10" /></svg>
-              </button>
-              <button className="sidebar-action-btn" onClick={() => setShowProjectSettings(true)} title="Project Settings (Cmd+,)" style={{ background: buttonBg, color: sidebarFg }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-              </button>
-              <button className="sidebar-action-btn" onClick={() => setShowThemeEditor(true)} title="Theme Editor (Cmd+Shift+T)" style={{ background: buttonBg, color: sidebarFg }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1a2 2 0 0 0 2-2 10 10 0 0 0-7-13z" /><circle cx="8" cy="10" r="1.5" fill="currentColor" /><circle cx="12" cy="7" r="1.5" fill="currentColor" /><circle cx="16" cy="10" r="1.5" fill="currentColor" /><circle cx="9" cy="14" r="1.5" fill="currentColor" /></svg>
-              </button>
-              <button className="sidebar-action-btn" onClick={() => setShowHelp(true)} title="Help & Shortcuts (?)" style={{ background: buttonBg, color: sidebarFg }}>
+        {viewMode === 'sidebar' ? (
+          <>
+            {sidebarMode !== 'hidden' && (
+              <Sidebar
+                mode={sidebarMode}
+                accentColor={accentColor}
+                sidebarBackground={sidebarBg}
+                sidebarForeground={sidebarFg}
+                buttonBackground={buttonBg}
+                width={sidebarWidth}
+                onWidthChange={handleSidebarWidthChange}
+                onNewSession={() => setShowModal(true)}
+                onQuickSession={async () => {
+                  const id = await window.forgeterm.createSession('shell')
+                  if (id) {
+                    addSession({ id, name: 'shell', running: true })
+                    setActive(id)
+                  }
+                }}
+                onDuplicateSession={(name, command) => createSession(name, command)}
+                onProjectSettings={() => setShowProjectSettings(true)}
+                onThemeEditor={() => setShowThemeEditor(true)}
+                onHelp={() => setShowHelp(true)}
+                onCli={() => setShowCliInstall(true)}
+                onRemote={() => setShowRemoteAccess(true)}
+                onInfoPanel={(id) => setInfoPanelSessionId(infoPanelSessionId === id ? null : id)}
+                cliStatus={cliStatus}
+                remoteRunning={remoteRunning}
+              />
+            )}
+            {infoPanelSessionId && (() => {
+              const panelSession = sessions.find(s => s.id === infoPanelSessionId)
+              return panelSession ? (
+                <SessionInfoPanel
+                  session={panelSession}
+                  accentColor={accentColor}
+                  onClose={() => setInfoPanelSessionId(null)}
+                  onResume={handleResumeSession}
+                  onResumeInPlace={handleResumeInPlace}
+                />
+              ) : null
+            })()}
+            <div className={`terminal-area${sidebarMode === 'hidden' || showCliPrompt ? ' has-floating' : ''}`}>
+              {sessions.map((session) => (
+                <TerminalView
+                  key={session.id}
+                  sessionId={session.id}
+                  active={session.id === activeSessionId}
+                  config={config}
+                />
+              ))}
+              {sessions.length === 0 && (
+                <div className="empty-state">
+                  <p>No sessions. Press Cmd+N to create one.</p>
+                </div>
+              )}
+              {sidebarMode === 'hidden' && (
+                <div className="floating-actions">
+                  <button className="sidebar-action-btn" onClick={() => setShowModal(true)} title="New Session (Cmd+N)" style={{ background: buttonBg, color: sidebarFg }}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 3v10M3 8h10" /></svg>
+                  </button>
+                  <button className="sidebar-action-btn" onClick={() => setShowProjectSettings(true)} title="Project Settings (Cmd+,)" style={{ background: buttonBg, color: sidebarFg }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+                  </button>
+                  <button className="sidebar-action-btn" onClick={() => setShowThemeEditor(true)} title="Theme Editor (Cmd+Shift+T)" style={{ background: buttonBg, color: sidebarFg }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 0 0 20 2 2 0 0 0 2-2v-1a2 2 0 0 1 2-2h1a2 2 0 0 0 2-2 10 10 0 0 0-7-13z" /><circle cx="8" cy="10" r="1.5" fill="currentColor" /><circle cx="12" cy="7" r="1.5" fill="currentColor" /><circle cx="16" cy="10" r="1.5" fill="currentColor" /><circle cx="9" cy="14" r="1.5" fill="currentColor" /></svg>
+                  </button>
+                  <button className="sidebar-action-btn" onClick={() => setShowHelp(true)} title="Help & Shortcuts (?)" style={{ background: buttonBg, color: sidebarFg }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
               </button>
               <button className="sidebar-action-btn" onClick={() => setShowCliInstall(true)} title="CLI Tool" style={{ background: buttonBg, color: sidebarFg, position: 'relative' }}>
@@ -872,6 +875,27 @@ function App() {
           )}
           <ClaudeConnectionBanner accentColor={accentColor} />
         </div>
+          </>
+        ) : (
+          <GridLayout
+            accentColor={accentColor}
+            config={config}
+          />
+        )}
+        {viewMode === 'grid' && infoPanelSessionId && (() => {
+          const panelSession = sessions.find(s => s.id === infoPanelSessionId)
+          return panelSession ? (
+            <div className="grid-info-overlay">
+              <SessionInfoPanel
+                session={panelSession}
+                accentColor={accentColor}
+                onClose={() => setInfoPanelSessionId(null)}
+                onResume={handleResumeSession}
+                onResumeInPlace={handleResumeInPlace}
+              />
+            </div>
+          ) : null
+        })()}
       </div>
 
       {showModal && (

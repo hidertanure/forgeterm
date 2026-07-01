@@ -2073,10 +2073,11 @@ function setupIpcHandlers() {
     if (dashboardWindow && !dashboardWindow.isDestroyed()) {
       dashboardWindow.close()
     }
-    // Ensure new window gets focus after the source window's modal dismissal
-    if (sourceWin && targetWin !== sourceWin) {
-      setTimeout(() => targetWin.focus(), 100)
+    if (sourceWin && !sourceWin.isDestroyed() && targetWin !== sourceWin) {
+      sourceWin.close()
     }
+    // Ensure new window gets focus
+    setTimeout(() => targetWin.focus(), 100)
   })
 
   ipcMain.handle('workspaces:get', () => {
@@ -2105,6 +2106,9 @@ function setupIpcHandlers() {
       if (dashboardWindow && !dashboardWindow.isDestroyed()) {
         dashboardWindow.close()
       }
+      if (sourceWin && !sourceWin.isDestroyed() && !windows.includes(sourceWin)) {
+        sourceWin.close()
+      }
       if (arrange) {
         // Look up screen preferences for current display count
         const displayCount = screen.getAllDisplays().length
@@ -2112,10 +2116,10 @@ function setupIpcHandlers() {
         const indices = ws.screenPrefs?.[key]
         tileWindows(windows, indices)
       }
-      // Ensure opened windows get focus instead of the source window
-      const lastNew = windows[windows.length - 1]
-      if (sourceWin && lastNew && lastNew !== sourceWin) {
-        setTimeout(() => lastNew.focus(), 100)
+      // Ensure the first opened window gets focus
+      const firstNew = windows[0]
+      if (firstNew && !firstNew.isDestroyed()) {
+        setTimeout(() => firstNew.focus(), 100)
       }
       // Send default command to each window's first session after a short delay
       if (ws.defaultCommand) {

@@ -101,7 +101,9 @@ export function TerminalView({ sessionId, active, config, variant = 'tab', onFoc
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isAtBottomRef = useRef(true)
   const dragCountRef = useRef(0)
+  const onFocusRef = useRef(onFocus)
   configRef.current = config
+  onFocusRef.current = onFocus
 
   const initTerminal = useCallback(() => {
     if (!containerRef.current || initializedRef.current) return
@@ -263,6 +265,12 @@ export function TerminalView({ sessionId, active, config, variant = 'tab', onFoc
     container.addEventListener('dragleave', handleDragLeave)
     container.addEventListener('drop', handleDrop)
 
+    // Propagate focus to parent GridPanel when xterm textarea gains focus
+    const handleFocusIn = () => {
+      onFocusRef.current?.()
+    }
+    container.addEventListener('focusin', handleFocusIn)
+
     // Detect user scroll-up via wheel events to reliably cancel stick-to-bottom.
     // Wheel events only fire on user input (not programmatic scrolls), so this
     // prevents the auto-scroll from fighting the user during rapid output.
@@ -289,6 +297,7 @@ export function TerminalView({ sessionId, active, config, variant = 'tab', onFoc
       container.removeEventListener('dragover', handleDragOver)
       container.removeEventListener('dragleave', handleDragLeave)
       container.removeEventListener('drop', handleDrop)
+      container.removeEventListener('focusin', handleFocusIn)
       scrollDisposable.dispose()
       dataHandlers.delete(sessionId)
       if (resizeTimer) clearTimeout(resizeTimer)
@@ -505,7 +514,7 @@ export function TerminalView({ sessionId, active, config, variant = 'tab', onFoc
   }, [sessionId, dropMenu])
 
   return (
-    <div className="terminal-wrapper" style={{ display: (variant === 'grid' || active) ? 'block' : 'none' }} onMouseDown={onFocus}>
+    <div className="terminal-wrapper" style={{ display: (variant === 'grid' || active) ? 'block' : 'none' }} onMouseDownCapture={onFocus} onFocusCapture={onFocus}>
       {active && showSearch && (
         <div className="terminal-search-bar">
           <input

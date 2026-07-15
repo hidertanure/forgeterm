@@ -238,7 +238,7 @@ cmd_context() {
     cat <<'USAGE'
 Usage: ft context <0-100>
 
-Report Claude Code context window usage percentage to ForgeTerm.
+  Report context window usage percentage to ForgeTerm.
 The session indicator in the sidebar will show a ring reflecting usage.
 
 Examples:
@@ -257,42 +257,14 @@ USAGE
   check_response "$response" true || exit 1
 }
 
-cmd_conversation() {
-  if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    cat <<'USAGE'
-Usage: ft conversation <id>
-
-Associate the current session with a Claude conversation (session) ID so
-ForgeTerm can persist it and offer a one-click "Resume in Claude" button in
-the session info panel. Usually called automatically by a Claude SessionStart
-hook, but you can also set it manually.
-
-Examples:
-  ft conversation c490f302-9351-4219-a9c0-4b104bce79d4
-USAGE
-    exit 0
-  fi
-  local conversation_id="$1"
-  if [ -z "$conversation_id" ]; then echo "Usage: ft conversation <id>" >&2; exit 1; fi
-  require_session
-
-  local json="{\"command\":\"conversation\",\"conversationId\":$(json_string "$conversation_id"),\"projectPath\":$(json_string "$FORGETERM_PROJECT_PATH"),\"sessionId\":$(json_string "$FORGETERM_SESSION_ID")}"
-  local response
-  response=$(send_to_socket "$json") || exit 1
-  check_response "$response" true || exit 1
-}
-
 cmd_activity() {
   if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     cat <<'USAGE'
 Usage: ft activity <working|done|attention|idle>
 
-Report Claude's working state for the current session. ForgeTerm shows a
+Report the working state for the current session. ForgeTerm shows a
 loading indicator while a session is working and a glowing notification dot
-when Claude finishes (cleared once you visit the session).
-
-Usually called automatically by Claude Code hooks:
-  UserPromptSubmit -> working   Stop -> done   Notification -> attention
+when it finishes (cleared once you visit the session).
 
 Examples:
   ft activity working
@@ -656,7 +628,6 @@ else:
           --description) shift; json+=",\"description\":$(json_string "$1")" ;;
           --color) shift; json+=",\"accentColor\":$(json_string "$1")" ;;
           --command) shift; json+=",\"defaultCommand\":$(json_string "$1")" ;;
-          --claude-cli) shift; json+=",\"claudeCliName\":$(json_string "$1")" ;;
           --skip-permissions) json+=",\"dangerouslySkipPermissions\":true" ;;
           --no-skip-permissions) json+=",\"dangerouslySkipPermissions\":false" ;;
           *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -685,7 +656,6 @@ Commands:
     --description "text"
     --color "#hex"
     --command "default cmd"
-    --claude-cli "claude-hsp"          Claude CLI name for this workspace
     --skip-permissions | --no-skip-permissions
 USAGE
       ;;
@@ -754,7 +724,6 @@ Examples:
   ft config get window.emoji             # Specific key
   ft config set window.emoji "rocket"     # Set emoji
   ft config set projectName "My App" --project ~/projects/app
-  ft config set claudeResumeArgs '["--dangerously-skip-permissions"]'
 USAGE
       ;;
     *) echo "Unknown config command: $1" >&2; exit 1 ;;
@@ -862,7 +831,6 @@ Direct commands:
   close                   Close (delete) the current session, like Cmd+W
   info                    Update session info card
   context <0-100>         Report context window usage %
-  conversation <id>       Link session to a Claude conversation ID
   activity <state>        Report working state (working|done|attention|idle)
   open [path]             Open a project
   start [name]            Start a new live session (--claude, -p "prompt", -c "cmd")
@@ -889,7 +857,6 @@ case "${1:-}" in
   close)     shift; cmd_close "$@" ;;
   info)      shift; cmd_info "$@" ;;
   context)   shift; cmd_context "$@" ;;
-  conversation) shift; cmd_conversation "$@" ;;
   activity)  shift; cmd_activity "$@" ;;
   open)      shift; cmd_open "$@" ;;
   start)     shift; cmd_start "$@" ;;

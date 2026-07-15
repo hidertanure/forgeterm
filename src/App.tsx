@@ -14,22 +14,13 @@ import { RemoteAccessModal } from './components/RemoteAccessModal'
 import { SessionInfoPanel } from './components/SessionInfoPanel'
 import { Dashboard } from './components/Dashboard'
 import { UpdateBanner } from './components/UpdateBanner'
-import { ClaudeConnectionBanner } from './components/ClaudeConnectionBanner'
 import { useSessionStore } from './store/sessionStore'
-import type { ForgeTermConfig, CliStatus, ClaudeLaunch, HistoricalSession, GridLayoutPersisted } from '../shared/types'
+import type { ForgeTermConfig, CliStatus, HistoricalSession, GridLayoutPersisted } from '../shared/types'
 import type { WindowTheme } from './themes'
 import { generateWindowTheme, adjustAccentBrightness, getTerminalTheme } from './themes'
 import './App.css'
 
 type SidebarMode = 'full' | 'compact' | 'hidden'
-
-const DEFAULT_CLAUDE_LAUNCH: ClaudeLaunch = { cliName: 'claude', resumeArgs: ['--dangerously-skip-permissions'] }
-
-// Build the command that resumes a Claude conversation, honoring the project's
-// resolved CLI name (e.g. "claude-hsp") and resume args (skip-permissions toggle).
-function buildResumeCommand(conversationId: string, launch: ClaudeLaunch): string {
-  return [launch.cliName, ...launch.resumeArgs, '--resume', conversationId].join(' ')
-}
 
 const isDashboard = new URLSearchParams(window.location.search).get('mode') === 'dashboard'
 
@@ -38,7 +29,6 @@ function App() {
 
   const { sessions, activeSessionId, addSession, setRunning, setActive, removeSession, viewMode, setViewMode } = useSessionStore()
   const [config, setConfig] = useState<ForgeTermConfig | null>(null)
-  const [claudeLaunch, setClaudeLaunch] = useState<ClaudeLaunch>(DEFAULT_CLAUDE_LAUNCH)
   const [showModal, setShowModal] = useState(false)
   const [showThemeEditor, setShowThemeEditor] = useState(false)
   const [showProjectSettings, setShowProjectSettings] = useState(false)
@@ -102,7 +92,7 @@ function App() {
     initializedRef.current = true
 
     async function init() {
-      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState, savedGridLayout, launch] = await Promise.all([
+      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, hasProject, savedState, savedGridLayout] = await Promise.all([
         window.forgeterm.getProjectConfig(),
         window.forgeterm.getProjectPath(),
         window.forgeterm.getSidebarMode(),
@@ -110,7 +100,6 @@ function App() {
         window.forgeterm.hasProject(),
         window.forgeterm.getSavedSessions(),
         window.forgeterm.getGridLayout(),
-        window.forgeterm.getClaudeLaunch(),
       ])
 
       if (!hasProject) {
@@ -119,7 +108,6 @@ function App() {
       }
 
       setConfig(projectConfig)
-      setClaudeLaunch(launch)
       if (projectPath) setProjectPath(projectPath)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
@@ -132,18 +120,11 @@ function App() {
         const sorted = [...savedState.sessions].sort((a, b) => a.order - b.order)
         const results = await Promise.all(
           sorted.map(async (s) => {
-            let command = s.command
-            let idle = !s.wasRunning
-
-            if (s.claudeSessionId) {
-              // Don't auto-resume Claude sessions on open: come up stopped, the
-              // user resumes via the play button or the info-panel Resume button.
-              command = buildResumeCommand(s.claudeSessionId, launch)
-              idle = true
-            }
+            const command = s.command
+            const idle = !s.wasRunning
 
             const id = await window.forgeterm.createSession(s.name, command, idle, s.nameLocked)
-            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
+            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info } : null
           })
         )
         for (const r of results) {
@@ -151,9 +132,6 @@ function App() {
             addSession(r)
             if (r.info) {
               useSessionStore.getState().setSessionInfo(r.id, r.info)
-            }
-            if (r.conversationId) {
-              useSessionStore.getState().setConversationId(r.id, r.conversationId)
             }
           }
         }
@@ -252,15 +230,12 @@ function App() {
     const unsubContext = window.forgeterm.onContextUpdated((sessionId, percent) => {
       useSessionStore.getState().setContextPercent(sessionId, percent)
     })
-    const unsubConversation = window.forgeterm.onConversationUpdated((sessionId, conversationId) => {
-      useSessionStore.getState().setConversationId(sessionId, conversationId)
-    })
     const unsubActivity = window.forgeterm.onSessionActivityUpdated((sessionId, signal) => {
       const st = useSessionStore.getState()
       const viewing = st.activeSessionId === sessionId && document.hasFocus()
       st.applyActivitySignal(sessionId, signal, viewing)
     })
-    return () => { unsubRename(); unsubClosed(); unsubInfo(); unsubContext(); unsubConversation(); unsubActivity() }
+    return () => { unsubRename(); unsubClosed(); unsubInfo(); unsubContext(); unsubActivity() }
   }, [])
 
   // Listen for session exits
@@ -273,12 +248,8 @@ function App() {
   // Listen for config changes
   useEffect(() => {
     return window.forgeterm.onConfigChanged(async () => {
-      const [newConfig, launch] = await Promise.all([
-        window.forgeterm.getProjectConfig(),
-        window.forgeterm.getClaudeLaunch(),
-      ])
+      const newConfig = await window.forgeterm.getProjectConfig()
       setConfig(newConfig)
-      setClaudeLaunch(launch)
       if (newConfig?.projectName) {
         document.title = newConfig.projectName
       }
@@ -321,16 +292,14 @@ function App() {
     return window.forgeterm.onProjectOpened(async () => {
       setShowWelcome(false)
       initializedRef.current = false
-      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, savedState, launch] = await Promise.all([
+      const [projectConfig, projectPath, savedSidebarMode, savedSidebarWidth, savedState] = await Promise.all([
         window.forgeterm.getProjectConfig(),
         window.forgeterm.getProjectPath(),
         window.forgeterm.getSidebarMode(),
         window.forgeterm.getSidebarWidth(),
         window.forgeterm.getSavedSessions(),
-        window.forgeterm.getClaudeLaunch(),
       ])
       setConfig(projectConfig)
-      setClaudeLaunch(launch)
       if (projectPath) setProjectPath(projectPath)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
@@ -342,21 +311,16 @@ function App() {
         const sorted = [...savedState.sessions].sort((a, b) => a.order - b.order)
         const results = await Promise.all(
           sorted.map(async (s) => {
-            let command = s.command
-            let idle = !s.wasRunning
-            if (s.claudeSessionId) {
-              command = buildResumeCommand(s.claudeSessionId, launch)
-              idle = true
-            }
+            const command = s.command
+            const idle = !s.wasRunning
             const id = await window.forgeterm.createSession(s.name, command, idle, s.nameLocked)
-            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info, conversationId: s.claudeSessionId } : null
+            return id ? { id, name: s.name, command: s.command, running: !idle, info: s.info } : null
           })
         )
         for (const r of results) {
           if (r) {
             addSession(r)
             if (r.info) useSessionStore.getState().setSessionInfo(r.id, r.info)
-            if (r.conversationId) useSessionStore.getState().setConversationId(r.id, r.conversationId)
           }
         }
         if (savedState.activeSessionName) {
@@ -835,8 +799,7 @@ function App() {
                   session={panelSession}
                   accentColor={accentColor}
                   onClose={() => setInfoPanelSessionId(null)}
-                  onResume={handleResumeSession}
-                  onResumeInPlace={handleResumeInPlace}
+                  onRestart={handleRestartInPlace}
                 />
               ) : null
             })()}
@@ -891,7 +854,6 @@ function App() {
               Install CLI
             </button>
           )}
-          <ClaudeConnectionBanner accentColor={accentColor} />
         </div>
           </>
         ) : (
@@ -919,8 +881,7 @@ function App() {
                 session={panelSession}
                 accentColor={accentColor}
                 onClose={() => setInfoPanelSessionId(null)}
-                onResume={handleResumeSession}
-                onResumeInPlace={handleResumeInPlace}
+                onRestart={handleRestartInPlace}
               />
             </div>
           ) : null

@@ -10,7 +10,7 @@ export interface Session {
   info?: SessionContext
   contextPercent?: number
   conversationId?: string
-  // True once a precise activity signal (Claude hook / `ft activity`) has been
+  // True once a precise activity signal (`ft activity`) has been
   // seen for this session. Disables the PTY-output heuristic so the two never fight.
   hookManaged?: boolean
 }
@@ -132,7 +132,7 @@ export const useSessionStore = create<SessionStore>((set) => ({
       }
     }),
 
-  // Precise activity signal from a Claude hook / `ft activity`. Marks the
+  // Precise activity signal from `ft activity`. Marks the
   // session hook-managed (disabling the PTY heuristic) and maps the signal to
   // a display status: 'done' clears to idle when you're viewing the session,
   // otherwise becomes 'unread'; 'attention' always becomes 'unread'.

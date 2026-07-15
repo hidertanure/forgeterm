@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import type { Session } from '../store/sessionStore'
 import type { SessionTimelineEntry } from '../../shared/types'
 
@@ -6,8 +5,7 @@ interface SessionInfoPanelProps {
   session: Session
   accentColor: string
   onClose: () => void
-  onResume: (conversationId: string, name: string) => void
-  onResumeInPlace: (sessionId: string) => void
+  onRestart: (sessionId: string) => void
 }
 
 function formatTimestamp(ts: number): string {
@@ -24,19 +22,9 @@ function formatTimestamp(ts: number): string {
   return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`
 }
 
-export function SessionInfoPanel({ session, accentColor, onClose, onResume, onResumeInPlace }: SessionInfoPanelProps) {
+export function SessionInfoPanel({ session, accentColor, onClose, onRestart }: SessionInfoPanelProps) {
   const info = session.info
   const timeline = info?.timeline ?? []
-  const conversationId = session.conversationId
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    if (!conversationId) return
-    navigator.clipboard.writeText(conversationId).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
-    })
-  }
 
   return (
     <div className="session-info-panel">
@@ -49,36 +37,18 @@ export function SessionInfoPanel({ session, accentColor, onClose, onResume, onRe
         </button>
       </div>
 
-      {conversationId && (
+      {!session.running && (
         <div className="session-info-panel-conversation">
-          <div className="session-info-panel-label">Claude conversation</div>
+          <div className="session-info-panel-label">Stopped</div>
           <div className="session-info-panel-conversation-row">
-            <code
-              className="session-info-panel-conversation-id"
-              title={copied ? 'Copied!' : 'Click to copy conversation ID'}
-              onClick={handleCopy}
+            <button
+              className="session-info-panel-resume"
+              style={{ background: accentColor }}
+              onClick={() => onRestart(session.id)}
+              title="Restart this session"
             >
-              {copied ? 'Copied!' : conversationId}
-            </code>
-            {session.running ? (
-              <button
-                className="session-info-panel-resume"
-                style={{ background: accentColor }}
-                onClick={() => onResume(conversationId, session.name)}
-                title="Open a new session resuming this Claude conversation"
-              >
-                Resume in new session
-              </button>
-            ) : (
-              <button
-                className="session-info-panel-resume"
-                style={{ background: accentColor }}
-                onClick={() => onResumeInPlace(session.id)}
-                title="Start this session, resuming the Claude conversation"
-              >
-                Resume session
-              </button>
-            )}
+              Restart session
+            </button>
           </div>
         </div>
       )}

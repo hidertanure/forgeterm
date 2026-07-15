@@ -15,11 +15,7 @@
   "extraResources": [
     {
       "from": "bin/forgeterm-cli.sh",
-      "to": "bin/forgeterm-cli.sh"
-    },
-    {
-      "from": "bin/hooks/report-activity.cjs",
-      "to": "bin/hooks/report-activity.cjs"
+      "to": "bin/forgetterm-cli.sh"
     },
     {
       "from": "electron/remote-web",

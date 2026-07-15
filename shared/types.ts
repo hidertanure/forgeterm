@@ -36,12 +36,6 @@ export interface ForgeTermConfig {
     autoStart?: boolean
   }>
   dragDropBehavior?: 'ask' | 'path' | 'content' | 'copy'
-  claudeResumeArgs?: string[]
-  // Custom Claude CLI command name (default "claude"), e.g. "claude-hsp".
-  claudeCliName?: string
-  // Whether ForgeTerm-built Claude resume/restore commands include
-  // --dangerously-skip-permissions (default true).
-  dangerouslySkipPermissions?: boolean
 }
 
 export interface SessionInfo {
@@ -73,10 +67,6 @@ export interface Workspace {
   description?: string
   accentColor?: string
   defaultCommand?: string
-  // Custom Claude CLI command name for projects in this workspace (e.g. "claude-hsp").
-  claudeCliName?: string
-  // Whether automatic Claude resumes include --dangerously-skip-permissions.
-  dangerouslySkipPermissions?: boolean
 }
 
 export interface DisplayInfo {
@@ -152,18 +142,11 @@ export interface SavedSession {
   name: string
   command?: string
   wasRunning: boolean
-  claudeSessionId?: string
   info?: SessionContext
   order: number
   // True if the user renamed this session manually; persists the rename lock
-  // so a CLI/Claude `ft rename` won't override it after restore.
+  // so a CLI `ft rename` won't override it after restore.
   nameLocked?: boolean
-}
-
-// Resolved Claude launch settings for a project (precedence: project -> workspace -> default).
-export interface ClaudeLaunch {
-  cliName: string
-  resumeArgs: string[]
 }
 
 export interface GridLayoutPersisted {
@@ -280,16 +263,9 @@ export interface RemoteStatus {
 
 export type CliStatus = 'not-setup' | 'connected' | 'error'
 
-export interface ClaudeConnectionStatus {
-  connected: boolean
-  currentVersion: string
-  promptedVersion: string | null
-  needsUpdate: boolean
-}
-
 export type SessionActivityStatus = 'idle' | 'working' | 'unread'
 
-// Signals reported by the CLI / Claude hooks. Mapped to SessionActivityStatus
+// Signals reported by the CLI. Mapped to SessionActivityStatus
 // in the renderer: 'done' clears to idle if the session is being viewed,
 // otherwise becomes 'unread'; 'attention' always becomes 'unread'.
 export type SessionActivitySignal = 'working' | 'done' | 'attention' | 'idle'
@@ -401,19 +377,13 @@ export interface ForgeTermAPI {
   onSessionClosed: (callback: (sessionId: string) => void) => () => void
   onSessionInfoUpdated: (callback: (sessionId: string, info: SessionContext) => void) => () => void
   onContextUpdated: (callback: (sessionId: string, percent: number) => void) => () => void
-  onConversationUpdated: (callback: (sessionId: string, conversationId: string) => void) => () => void
   onSessionActivityUpdated: (callback: (sessionId: string, signal: SessionActivitySignal) => void) => () => void
-  installClaudeHooks: () => Promise<{ success: boolean; error?: string }>
-  areClaudeHooksInstalled: () => Promise<boolean>
   getSavedSessions: () => Promise<SavedWindowState | null>
   clearSavedSessions: () => Promise<void>
   saveGridLayout: (state: GridLayoutPersisted) => Promise<void>
   getGridLayout: () => Promise<GridLayoutPersisted | null>
   clearGridLayout: () => Promise<void>
   deleteSession: (id: string) => Promise<void>
-  checkClaudeConnection: () => Promise<ClaudeConnectionStatus>
-  getClaudeSetupPrompt: () => Promise<string>
-  getClaudeLaunch: () => Promise<ClaudeLaunch>
   closeWindow: () => void
   takePendingStarts: () => Promise<PendingSessionStart[]>
   onFlushPendingStarts: (callback: () => void) => () => void

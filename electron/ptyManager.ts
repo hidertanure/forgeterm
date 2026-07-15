@@ -12,7 +12,7 @@ interface PtySession {
   info?: SessionContext
   conversationId?: string
   createdAt: number
-  // True once the user renamed this session manually; blocks CLI/Claude renames.
+  // True once the user renamed this session manually; blocks CLI renames.
   nameLocked?: boolean
 }
 

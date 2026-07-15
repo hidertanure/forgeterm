@@ -44,7 +44,7 @@ Define named terminal sessions that auto-launch when you open a project. Dev ser
 
 ### Session State Persistence
 
-When you close a window, ForgeTerm saves the state of all sessions - names, commands, running status, and Claude Code conversation IDs. When you reopen the project, everything restarts exactly where it was, including resuming Claude Code sessions.
+When you close a window, ForgeTerm saves the state of all sessions - names, commands, running status, and session metadata. When you reopen the project, everything restarts exactly where it was.
 
 ### CLI Tool (`ft`)
 
@@ -68,14 +68,6 @@ ft config get [key] [--project <path>]
 ft config set <key> <value>
 ft theme list | set | terminal | favorites
 ```
-
-### Claude Code Integration
-
-![Claude connection banner](public/screenshots/feature-claude-banner.png)
-
-ForgeTerm detects Claude Code sessions and auto-resumes them on restart. A one-click connection system keeps Claude's instructions in sync with the latest CLI commands - ForgeTerm shows a banner when setup is needed, and clicking it copies the setup prompt to your clipboard.
-
-Extra CLI args for Claude resume (like `--dangerously-skip-permissions`) can be configured per project via `claudeResumeArgs` in `.forgeterm.json`.
 
 ### Import from VS Code Project Manager
 
@@ -103,8 +95,7 @@ Drop a `.forgeterm.json` in any project to define startup sessions, themes, and 
     "emoji": "rocket",
     "themeName": "ocean"
   },
-  "terminalTheme": "nord",
-  "claudeResumeArgs": ["--dangerously-skip-permissions"]
+  "terminalTheme": "nord"
 }
 ```
 

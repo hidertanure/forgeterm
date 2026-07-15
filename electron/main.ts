@@ -137,8 +137,8 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     const win = findWindowForProject(projectPath)
     if (win && !win.isDestroyed()) {
       const state = windowStates.get(win.id)
-      // Respect a manual rename: once the user names a session, CLI/Claude
-      // renames are ignored (reported as ok so Claude doesn't retry/error).
+      // Respect a manual rename: once the user names a session, CLI
+      // renames are ignored.
       if (state?.ptyManager.isNameLocked(sessionId)) {
         return { ok: true }
       }
@@ -469,8 +469,6 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     if (p.description !== undefined) ws.description = p.description as string
     if (p.accentColor !== undefined) ws.accentColor = p.accentColor as string
     if (p.defaultCommand !== undefined) ws.defaultCommand = p.defaultCommand as string
-    if (p.claudeCliName !== undefined) ws.claudeCliName = (p.claudeCliName as string) || undefined
-    if (p.dangerouslySkipPermissions !== undefined) ws.dangerouslySkipPermissions = p.dangerouslySkipPermissions as boolean
     saveWorkspaces(workspaces)
     return { ok: true }
   })
@@ -833,148 +831,6 @@ function getWorkspaceForProject(projectPath: string): string | undefined {
   return workspaces.find((ws) => ws.projects.includes(projectPath))?.name
 }
 
-// Resolve the Claude CLI name + resume args for a project.
-// Precedence: project config -> its workspace -> defaults ("claude", skip-permissions on).
-function resolveClaudeLaunch(projectPath?: string): import('../shared/types').ClaudeLaunch {
-  const config = projectPath ? loadConfig(projectPath) : null
-  const ws = projectPath
-    ? loadWorkspaces().find((w) => w.projects.includes(projectPath))
-    : undefined
-  const cliName = config?.claudeCliName || ws?.claudeCliName || 'claude'
-  const skip = config?.dangerouslySkipPermissions ?? ws?.dangerouslySkipPermissions ?? true
-  const resumeArgs = config?.claudeResumeArgs && config.claudeResumeArgs.length > 0
-    ? config.claudeResumeArgs
-    : (skip ? ['--dangerously-skip-permissions'] : [])
-  return { cliName, resumeArgs }
-}
-
-// --- Claude Code connection check ---
-
-interface ClaudeConnectionStatus {
-  connected: boolean
-  currentVersion: string
-  promptedVersion: string | null
-  needsUpdate: boolean
-}
-
-function checkClaudeConnection(): ClaudeConnectionStatus {
-  const currentVersion = app.getVersion()
-  const claudeMdPath = path.join(app.getPath('home'), '.claude', 'CLAUDE.md')
-
-  try {
-    const content = fs.readFileSync(claudeMdPath, 'utf-8')
-    const match = content.match(/<!-- forgeterm:v:(\S+) -->/)
-    if (match) {
-      const promptedVersion = match[1]
-      return {
-        connected: true,
-        currentVersion,
-        promptedVersion,
-        needsUpdate: promptedVersion !== currentVersion,
-      }
-    }
-  } catch {
-    // File doesn't exist or can't be read
-  }
-
-  return { connected: false, currentVersion, promptedVersion: null, needsUpdate: true }
-}
-
-function getClaudeSetupPrompt(): string {
-  const version = app.getVersion()
-  return `I use ForgeTerm as my terminal for Claude Code. Please update my global Claude Code instructions (~/.claude/CLAUDE.md) to include the ForgeTerm integration section below.
-
-IMPORTANT: If there's already a "ForgeTerm Integration" section in ~/.claude/CLAUDE.md, replace it entirely with the new version below. If not, add it.
-
-The section MUST end with this exact comment (it's how ForgeTerm detects the connection):
-<!-- forgeterm:v:${version} -->
-
-Here is the section to add/replace:
-
----
-
-## ForgeTerm Integration
-
-Nadav uses ForgeTerm as his only terminal for Claude Code. ForgeTerm exposes a CLI (\`ft\`, also available as \`forgeterm\`) that communicates with the running app over a Unix socket. Use these commands proactively to keep the ForgeTerm UI informative.
-
-### Session Rename
-When the user gives their first real task in a conversation, rename the session to reflect the work:
-\`\`\`bash
-ft rename "Refactoring auth middleware"
-\`\`\`
-- Keep it short (2-5 words), descriptive of the task
-- Update it if the task changes significantly mid-conversation
-- Only works inside a ForgeTerm session (env vars \`FORGETERM_SESSION_ID\` and \`FORGETERM_PROJECT_PATH\` are set automatically)
-
-### Session Info Card
-Update the sidebar info card at key milestones so the user can glance at what's happening:
-\`\`\`bash
-ft info \\
-  --title "Refactoring auth middleware" \\
-  --summary "Splitting auth.ts into JWT and session modules. 3 files changed so far." \\
-  --last "Extracted JWT validation into jwt.ts"
-\`\`\`
-- \`--title\`: One-line description of the current task
-- \`--summary\`: 1-2 sentences on current state/progress
-- \`--last\`: What was just completed
-- \`--action "Review the PR"\`: (Optional) When something needs the user's attention
-- Update info after completing a significant step, not after every small edit
-- Good moments to update: after finishing a subtask, before/after a build, when blocked or waiting for input
-
-### Context Usage
-Report your context window usage so the sidebar shows a visual ring indicator per session:
-\`\`\`bash
-ft context 42   # 42% of context used
-\`\`\`
-- Report context usage after each significant interaction (every few messages)
-- The number is 0-100 representing the percentage of your context window consumed
-- ForgeTerm shows this as a ring around the session indicator dot in the sidebar
-- When context gets high (>80%), the ring turns red as a visual warning
-- If you know your approximate context usage, report it periodically
-
-### Notifications
-Send native macOS notifications for events the user should see even if they're not looking at the terminal:
-\`\`\`bash
-ft notify "Done"
-ft notify "Build failed" --title "CI"
-\`\`\`
-- After completing a task: \`ft notify "Done"\` (or a short relevant message)
-- After long-running commands: \`command && ft notify "Success" || ft notify "Failed"\`
-- When blocked and needing human input: \`ft notify "Need your input"\`
-- Clicking the notification focuses the correct ForgeTerm window and session
-
-### Full CLI Reference
-\`\`\`
-ft notify "msg"                        # Send notification
-ft rename "name"                       # Rename current session
-ft close                               # Close (delete) the current session, like Cmd+W
-ft info --title ... --summary ...      # Update session info card
-ft context <0-100>                     # Report context window usage %
-ft open <path>                         # Open a project
-ft list                                # List recent projects
-
-ft project list|open|remove            # Manage projects
-ft session list|add|remove             # Manage sessions (--project <path>)
-ft workspace list|create|delete|rename # Manage workspaces
-ft workspace add-project|remove-project|open|update
-ft config get [key] [--project <path>] # Read project config
-ft config set <key> <value>            # Write project config
-ft theme list|set|terminal|favorites   # Manage themes
-\`\`\`
-
-### Typical Flow
-1. User gives a task -> \`ft rename "Fix login bug"\`
-2. Start working -> \`ft info --title "Fix login bug" --summary "Investigating auth flow" --last "Reading auth middleware"\`
-3. Make progress -> update info with \`--last "Found root cause in session.ts"\` and \`ft context 35\`
-4. Finish -> \`ft info ... --last "Fixed and tested"\` then \`ft notify "Done"\`
-
-<!-- forgeterm:v:${version} -->
-
----
-
-After updating CLAUDE.md, confirm the change was made.`
-}
-
 // --- Session state persistence ---
 
 function getSavedSessionsPath(): string {
@@ -1016,27 +872,6 @@ async function snapshotProcessTree(): Promise<Map<number, number[]>> {
   return children
 }
 
-// Walk a shell's process subtree in memory (no spawning) looking for a child
-// Claude process that has recorded ~/.claude/sessions/{pid}.json, and return its
-// sessionId.
-function findClaudeSessionIdInTree(shellPid: number, childMap: Map<number, number[]>): string | null {
-  const claudeSessionsDir = path.join(app.getPath('home'), '.claude', 'sessions')
-  const stack = [...(childMap.get(shellPid) ?? [])]
-  const seen = new Set<number>()
-  while (stack.length > 0) {
-    const pid = stack.pop() as number
-    if (seen.has(pid)) continue
-    seen.add(pid)
-    try {
-      const data = JSON.parse(fs.readFileSync(path.join(claudeSessionsDir, `${pid}.json`), 'utf-8'))
-      if (data.sessionId) return data.sessionId as string
-    } catch { /* not a Claude session */ }
-    const kids = childMap.get(pid)
-    if (kids) stack.push(...kids)
-  }
-  return null
-}
-
 function saveWindowSessionState(state: WindowState) {
   if (!state.projectPath) return
   const sessions = state.ptyManager.getAllSessions()
@@ -1053,9 +888,6 @@ function saveWindowSessionState(state: WindowState) {
     name: s.name,
     command: s.command,
     wasRunning: s.running,
-    // Conversation id is kept current by the periodic poller and the SessionStart
-    // hook; never do a blocking process scan here (this runs on a debounce and at quit).
-    claudeSessionId: s.conversationId,
     info: s.info,
     order: index,
     nameLocked: s.nameLocked,
@@ -1086,54 +918,6 @@ function schedulePersist(winId: number) {
   timer.unref?.()
   persistTimers.set(winId, timer)
 }
-
-// Periodically reconcile each running session's Claude conversation id from the
-// live ~/.claude/sessions/{pid}.json files. This is the always-on fallback that
-// works even without the SessionStart hook installed.
-//
-// Performance: only sessions whose id we don't yet know are scanned (a Claude
-// session id is stable for the life of its process, and the SessionStart hook
-// reports restarts authoritatively), and the whole reconcile uses a single async
-// `ps` snapshot rather than a recursive synchronous `pgrep` walk per session, so
-// it never blocks the main process event loop.
-let detectingConversationIds = false
-async function detectConversationIds() {
-  if (detectingConversationIds) return
-
-  // Gather running sessions that still need an id; skip ones we already know.
-  const pending: Array<{ winId: number; win: BrowserWindow; sessionId: string; shellPid: number }> = []
-  for (const [winId, state] of windowStates) {
-    const win = BrowserWindow.fromId(winId)
-    if (!win || win.isDestroyed()) continue
-    for (const s of state.ptyManager.getAllSessions()) {
-      if (!s.running || !s.pid || s.conversationId) continue
-      pending.push({ winId, win, sessionId: s.id, shellPid: s.pid })
-    }
-  }
-  if (pending.length === 0) return
-
-  detectingConversationIds = true
-  try {
-    const childMap = await snapshotProcessTree()
-    const changedWins = new Set<number>()
-    for (const { winId, win, sessionId, shellPid } of pending) {
-      if (win.isDestroyed()) continue
-      const state = windowStates.get(winId)
-      if (!state) continue
-      const detected = findClaudeSessionIdInTree(shellPid, childMap)
-      if (detected) {
-        state.ptyManager.setConversationId(sessionId, detected)
-        win.webContents.send('session:conversation-updated', sessionId, detected)
-        changedWins.add(winId)
-      }
-    }
-    for (const winId of changedWins) schedulePersist(winId)
-  } finally {
-    detectingConversationIds = false
-  }
-}
-const conversationDetectInterval = setInterval(() => { void detectConversationIds() }, 15_000)
-conversationDetectInterval.unref?.()
 
 // --- Window tiling ---
 
@@ -1899,12 +1683,7 @@ function openWorkspaceFromTray(ws: Workspace) {
 }
 
 function updateDockBadge() {
-  if (process.platform !== 'darwin') return
-  let totalUnread = 0
-  for (const [, info] of windowActivities) {
-    totalUnread += info.sessions.filter((s) => s.status === 'unread').length
-  }
-  app.dock.setBadge(totalUnread > 0 ? String(totalUnread) : '')
+  // Dock badge disabled
 }
 
 function setupIpcHandlers() {
@@ -1976,7 +1755,7 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('session:rename', (event, id: string, name: string) => {
-    // User-initiated rename locks the name against later CLI/Claude renames.
+    // User-initiated rename locks the name against later CLI renames.
     getStateForEvent(event)?.ptyManager.rename(id, name, true)
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) schedulePersist(win.id)
@@ -1985,11 +1764,6 @@ function setupIpcHandlers() {
   ipcMain.handle('window:close', (event) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win && !win.isDestroyed()) win.close()
-  })
-
-  ipcMain.handle('claude:get-launch', (event): import('../shared/types').ClaudeLaunch => {
-    const state = getStateForEvent(event)
-    return resolveClaudeLaunch(state?.projectPath)
   })
 
   ipcMain.handle('config:get', (event) => {
@@ -2419,8 +2193,6 @@ function setupIpcHandlers() {
       if (updates.description !== undefined) ws.description = updates.description || undefined
       if (updates.accentColor !== undefined) ws.accentColor = updates.accentColor || undefined
       if (updates.defaultCommand !== undefined) ws.defaultCommand = updates.defaultCommand || undefined
-      if (updates.claudeCliName !== undefined) ws.claudeCliName = updates.claudeCliName || undefined
-      if (updates.dangerouslySkipPermissions !== undefined) ws.dangerouslySkipPermissions = updates.dangerouslySkipPermissions
       saveWorkspaces(workspaces)
     }
   })
@@ -2634,10 +2406,6 @@ function setupIpcHandlers() {
     }
   })
 
-  // --- Claude activity hooks ---
-  ipcMain.handle('claude-hooks:installed', (): boolean => areClaudeActivityHooksInstalled())
-  ipcMain.handle('claude-hooks:install', (): { success: boolean; error?: string } => installClaudeActivityHooks())
-
   // --- Update checks ---
 
   ipcMain.handle('update:check', async (): Promise<UpdateInfo> => {
@@ -2701,16 +2469,6 @@ function setupIpcHandlers() {
 
   ipcMain.handle('remote:status', (): RemoteStatus => {
     return remoteServer.getStatus()
-  })
-
-  // --- Claude Code connection ---
-
-  ipcMain.handle('claude:check-connection', (): ClaudeConnectionStatus => {
-    return checkClaudeConnection()
-  })
-
-  ipcMain.handle('claude:get-setup-prompt', (): string => {
-    return getClaudeSetupPrompt()
   })
 
   // Session activity tracking for tray menu and dock badge
@@ -2862,102 +2620,6 @@ async function installCli() {
   }
 }
 
-// --- Claude activity hooks ---
-// Install Claude Code hooks that report each session's working state via
-// `forgeterm activity`, so ForgeTerm can show precise loading / needs-attention
-// indicators. Mirrors the existing conversation-id SessionStart hook.
-
-const CLAUDE_ACTIVITY_HOOKS = [
-  { event: 'UserPromptSubmit', status: 'working' },
-  { event: 'Stop', status: 'done' },
-  { event: 'Notification', status: 'attention' },
-]
-
-function getActivityHookSourcePath(): string {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, 'bin', 'hooks', 'report-activity.cjs')
-  }
-  return path.join(__dirname, '..', 'bin', 'hooks', 'report-activity.cjs')
-}
-function activityHookScriptDest(): string {
-  return path.join(app.getPath('home'), '.claude', 'hooks', 'forgeterm', 'report-activity.cjs')
-}
-function claudeSettingsPath(): string {
-  return path.join(app.getPath('home'), '.claude', 'settings.json')
-}
-// True if any entry in this event's hook array references the activity script.
-function hasActivityHook(arr: unknown): boolean {
-  if (!Array.isArray(arr)) return false
-  return arr.some((entry) =>
-    Array.isArray((entry as { hooks?: unknown }).hooks) &&
-    (entry as { hooks: Array<{ command?: unknown }> }).hooks.some(
-      (h) => typeof h.command === 'string' && h.command.includes('report-activity.cjs'),
-    ),
-  )
-}
-
-function areClaudeActivityHooksInstalled(): boolean {
-  try {
-    if (!fs.existsSync(activityHookScriptDest())) return false
-    const settingsPath = claudeSettingsPath()
-    if (!fs.existsSync(settingsPath)) return false
-    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
-    const hooks = (settings?.hooks ?? {}) as Record<string, unknown>
-    return CLAUDE_ACTIVITY_HOOKS.every(({ event }) => hasActivityHook(hooks[event]))
-  } catch {
-    return false
-  }
-}
-
-function installClaudeActivityHooks(): { success: boolean; error?: string } {
-  try {
-    const source = getActivityHookSourcePath()
-    if (!fs.existsSync(source)) {
-      return { success: false, error: `Hook script not found at ${source}` }
-    }
-    // 1. Copy the hook script into ~/.claude/hooks/forgeterm/
-    const scriptDest = activityHookScriptDest()
-    fs.mkdirSync(path.dirname(scriptDest), { recursive: true })
-    fs.copyFileSync(source, scriptDest)
-    fs.chmodSync(scriptDest, 0o755)
-
-    // 2. Register the three hooks in ~/.claude/settings.json (idempotent)
-    const settingsPath = claudeSettingsPath()
-    let settings: { hooks?: Record<string, Array<unknown>> } = {}
-    if (fs.existsSync(settingsPath)) {
-      const raw = fs.readFileSync(settingsPath, 'utf-8')
-      try {
-        settings = JSON.parse(raw)
-      } catch {
-        return { success: false, error: 'Could not parse ~/.claude/settings.json' }
-      }
-      // Back up before modifying
-      fs.writeFileSync(settingsPath + '.bak-forgeterm-activity', raw, 'utf-8')
-    } else {
-      fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
-    }
-    if (!settings.hooks || typeof settings.hooks !== 'object') settings.hooks = {}
-
-    let changed = false
-    for (const { event, status } of CLAUDE_ACTIVITY_HOOKS) {
-      if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = []
-      if (hasActivityHook(settings.hooks[event])) continue
-      settings.hooks[event].push({
-        matcher: '',
-        hooks: [{ type: 'command', command: `node "${scriptDest}" ${status}`, timeout: 3000 }],
-      })
-      changed = true
-    }
-    if (changed) {
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8')
-    }
-    return { success: true }
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return { success: false, error: msg }
-  }
-}
-
 function buildMenu() {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -2982,21 +2644,6 @@ function buildMenu() {
           label: 'Install Command Line Tool...',
           click: async () => {
             await installCli()
-          },
-        },
-        {
-          label: 'Install Claude Activity Hooks...',
-          click: () => {
-            const result = installClaudeActivityHooks()
-            if (result.success) {
-              dialog.showMessageBox({
-                type: 'info',
-                message: 'Claude activity hooks installed',
-                detail: 'ForgeTerm sessions will now show a loading indicator while Claude works and a glowing dot when it finishes.\n\nApplies to Claude sessions started from now on.',
-              })
-            } else {
-              dialog.showErrorBox('Install Failed', result.error || 'Unknown error')
-            }
           },
         },
         { type: 'separator' },

@@ -205,12 +205,6 @@ const api: ForgeTermAPI = {
   installCli: () =>
     ipcRenderer.invoke('cli:install'),
 
-  installClaudeHooks: () =>
-    ipcRenderer.invoke('claude-hooks:install'),
-
-  areClaudeHooksInstalled: () =>
-    ipcRenderer.invoke('claude-hooks:installed'),
-
   dismissCliPrompt: () =>
     ipcRenderer.invoke('cli:dismiss-prompt'),
 
@@ -354,12 +348,6 @@ const api: ForgeTermAPI = {
     return () => { ipcRenderer.removeListener('session:context-updated', handler) }
   },
 
-  onConversationUpdated: (callback: (sessionId: string, conversationId: string) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, sessionId: string, conversationId: string) => callback(sessionId, conversationId)
-    ipcRenderer.on('session:conversation-updated', handler)
-    return () => { ipcRenderer.removeListener('session:conversation-updated', handler) }
-  },
-
   onSessionActivityUpdated: (callback: (sessionId: string, signal: import('../shared/types').SessionActivitySignal) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessionId: string, signal: import('../shared/types').SessionActivitySignal) => callback(sessionId, signal)
     ipcRenderer.on('session:activity-updated', handler)
@@ -383,15 +371,6 @@ const api: ForgeTermAPI = {
 
   deleteSession: (id: string) =>
     ipcRenderer.invoke('session:delete', id),
-
-  checkClaudeConnection: () =>
-    ipcRenderer.invoke('claude:check-connection'),
-
-  getClaudeSetupPrompt: () =>
-    ipcRenderer.invoke('claude:get-setup-prompt'),
-
-  getClaudeLaunch: () =>
-    ipcRenderer.invoke('claude:get-launch'),
 
   closeWindow: () =>
     ipcRenderer.invoke('window:close'),

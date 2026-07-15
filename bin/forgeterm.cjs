@@ -244,9 +244,6 @@ Examples:
   forgeterm list --json           Output recent projects as JSON
   forgeterm notify "Build done"   Send a notification
   pnpm build && forgeterm notify "Build done"
-
-Tip: Add this to your project's CLAUDE.md or AI instructions:
-  When you finish a task, run: forgeterm notify "Done"
 `.trim())
 }
 

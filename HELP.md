@@ -87,9 +87,7 @@ Sessions are saved in `.forgeterm.json` so they travel with your repo. Toggle au
 
 ### Session State Persistence
 
-When you close a window or quit ForgeTerm, the state of all sessions is saved - names, commands, running status, and Claude Code conversation IDs. When you reopen the project, everything restarts exactly where it was.
-
-Claude Code sessions are automatically resumed with `claude -r {sessionId}`. You can configure extra args per project (like `--dangerously-skip-permissions`) by setting `claudeResumeArgs` in `.forgeterm.json` or via Project Settings.
+When you close a window or quit ForgeTerm, the state of all sessions is saved - names, commands, running status, and session metadata. When you reopen the project, everything restarts exactly where it was.
 
 ### Search & Session History
 
@@ -127,7 +125,7 @@ Cycle between three sidebar modes with ⌘B:
 
 ### Project Settings
 
-Configure everything per-project with ⌘,. Set the project name, assign it to a workspace, manage startup sessions, set drag & drop behavior, and configure Claude Code resume args - all saved to `.forgeterm.json` in your project root.
+Configure everything per-project with ⌘,. Set the project name, assign it to a workspace, manage startup sessions, and set drag & drop behavior - all saved to `.forgeterm.json` in your project root.
 
 ![Project settings with session configuration](screenshots/feature-project-settings.png)
 
@@ -194,17 +192,6 @@ ft theme favorites                      # List saved favorites
 
 When run inside a ForgeTerm session, commands automatically detect the current project and session via environment variables (`FORGETERM_PROJECT_PATH`, `FORGETERM_SESSION_ID`). Clicking a notification focuses the correct window and session.
 
-### Claude Code Integration
-
-![Claude connection banner](screenshots/feature-claude-banner.png)
-
-ForgeTerm has built-in support for Claude Code:
-
-- **Auto-resume** - Claude Code sessions are detected and resumed when you reopen a project
-- **Extra args** - Configure per-project args (like `--dangerously-skip-permissions`) via `claudeResumeArgs` in `.forgeterm.json`
-- **Connection sync** - ForgeTerm detects if Claude Code has been configured with the latest CLI commands. A banner appears when setup is needed - click it to copy the setup prompt to your clipboard, then paste it to Claude Code
-- **Session info** - Claude Code can use `ft rename`, `ft info`, and `ft notify` to keep you informed about what it's doing
-
 ### Notifications
 
 Get notified when long-running commands finish - builds, deploys, test suites, AI agents. Notifications are native macOS alerts that show up even when ForgeTerm is in the background. Clicking a notification focuses the right window and session.
@@ -221,9 +208,9 @@ ft notify "Deploy done" --no-sound
 pnpm build && ft notify "Done" || ft notify "Failed"
 ```
 
-**With AI agents (Claude Code, etc.):**
+**With AI agents:**
 
-Click the Claude connection banner in ForgeTerm to copy the setup prompt. Paste it to Claude Code - it will configure itself to use `ft rename`, `ft info`, and `ft notify` throughout your sessions. ForgeTerm re-checks on every update, so Claude always has the latest commands.
+Use the `ft` CLI to keep your AI coding agent informed - call `ft rename` to update session names, `ft info` to display session details, and `ft notify` to send alerts about task progress throughout your sessions.
 
 **How it works:**
 

@@ -25,8 +25,6 @@ export function EditWorkspaceModal({
   const [description, setDescription] = useState(workspace.description || '')
   const [wsProjects, setWsProjects] = useState<string[]>([...workspace.projects])
   const [defaultCommand, setDefaultCommand] = useState(workspace.defaultCommand || '')
-  const [wsClaudeCliName, setWsClaudeCliName] = useState(workspace.claudeCliName || '')
-  const [wsSkipPermissions, setWsSkipPermissions] = useState(workspace.dangerouslySkipPermissions ?? true)
   const [addProjectFilter, setAddProjectFilter] = useState('')
   const [showAddSuggestions, setShowAddSuggestions] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -71,9 +69,6 @@ export function EditWorkspaceModal({
       description: description.trim() || undefined,
       accentColor: wsAccentColor.trim() || undefined,
       defaultCommand: defaultCommand.trim() || undefined,
-      // Empty string clears the override; the handler maps it back to undefined.
-      claudeCliName: wsClaudeCliName.trim(),
-      dangerouslySkipPermissions: wsSkipPermissions,
     })
 
     // Sync projects: remove old, add new
@@ -100,11 +95,9 @@ export function EditWorkspaceModal({
       description: description.trim() || undefined,
       accentColor: wsAccentColor.trim() || undefined,
       defaultCommand: defaultCommand.trim() || undefined,
-      claudeCliName: wsClaudeCliName.trim() || undefined,
-      dangerouslySkipPermissions: wsSkipPermissions,
       projects: wsProjects,
     })
-  }, [name, emoji, wsAccentColor, description, defaultCommand, wsClaudeCliName, wsSkipPermissions, wsProjects, workspace, onSave])
+  }, [name, emoji, wsAccentColor, description, defaultCommand, wsProjects, workspace, onSave])
 
   const resolvedAccent = wsAccentColor || accentColor
 
@@ -249,25 +242,6 @@ export function EditWorkspaceModal({
             placeholder="e.g. git pull"
           />
           <div className="ws-description-hint">Runs in each project's first session when workspace opens</div>
-        </div>
-
-        <div className="form-field" style={{ marginTop: 16 }}>
-          <label>Claude CLI command</label>
-          <input
-            type="text"
-            value={wsClaudeCliName}
-            onChange={(e) => setWsClaudeCliName(e.target.value)}
-            placeholder="claude"
-          />
-          <div className="ws-description-hint">Used for Claude resumes in this workspace's projects (e.g. claude-hsp)</div>
-          <label style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={wsSkipPermissions}
-              onChange={(e) => setWsSkipPermissions(e.target.checked)}
-            />
-            <span>Skip permissions on resume (<code>--dangerously-skip-permissions</code>)</span>
-          </label>
         </div>
 
         <div className="modal-actions" style={{ justifyContent: 'space-between' }}>

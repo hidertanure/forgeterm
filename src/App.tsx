@@ -568,7 +568,7 @@ function App() {
   // Resume a Claude conversation in a brand-new session (used when the source
   // session is already running).
   const handleResumeSession = useCallback(async (conversationId: string, name: string) => {
-    const command = buildResumeCommand(conversationId, claudeLaunch)
+    const command = 'null';//buildResumeCommand(conversationId, claudeLaunch)
     const resumeName = `${name} (resume)`
     const id = await window.forgeterm.createSession(resumeName, command)
     if (id) {
@@ -576,12 +576,12 @@ function App() {
       setActive(id)
     }
     setInfoPanelSessionId(null)
-  }, [claudeLaunch, addSession, setActive])
+  }, [null, addSession, setActive])
 
   // Reopen a closed/historical session as a new one. Claude sessions resume the
   // conversation; other shells re-run their stored command.
   const handleReopenHistorical = useCallback(async (h: HistoricalSession) => {
-    const command = h.conversationId ? buildResumeCommand(h.conversationId, claudeLaunch) : h.command
+    const command = h.conversationId ? 'null' : h.command
     const id = await window.forgeterm.createSession(h.name, command)
     if (id) {
       addSession({ id, name: h.name, command, running: true, conversationId: h.conversationId })
@@ -589,7 +589,7 @@ function App() {
     }
     setShowHistory(false)
     setShowModal(false)
-  }, [claudeLaunch, addSession, setActive])
+  }, [null, addSession, setActive])
 
   // Reopen the single most-recently-closed session (Chrome-style Cmd+Shift+T).
   // Picks the newest closed session for this project that isn't already open.
@@ -799,7 +799,7 @@ function App() {
                   session={panelSession}
                   accentColor={accentColor}
                   onClose={() => setInfoPanelSessionId(null)}
-                  onRestart={handleRestartInPlace}
+                  onRestart={()=>{}}
                 />
               ) : null
             })()}
@@ -881,7 +881,7 @@ function App() {
                 session={panelSession}
                 accentColor={accentColor}
                 onClose={() => setInfoPanelSessionId(null)}
-                onRestart={handleRestartInPlace}
+                onRestart={()=>{}}
               />
             </div>
           ) : null

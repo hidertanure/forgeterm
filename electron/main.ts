@@ -269,12 +269,6 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     // `runCommand`, not `command`: the socket envelope already uses `command`
     // for the RPC verb, so a second `command` key would clobber it on parse.
     let command = (p.runCommand as string | undefined) || undefined
-    if (useClaude) {
-      const launch = resolveClaudeLaunch(resolved)
-      const parts = [launch.cliName, ...launch.resumeArgs]
-      if (prompt) parts.push(shellSingleQuote(prompt))
-      command = parts.join(' ')
-    }
 
     const name =
       (p.name as string) ||

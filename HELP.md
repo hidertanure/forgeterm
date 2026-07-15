@@ -8,21 +8,25 @@ A terminal emulator built for multi-project workflows. Open an entire workspace 
 
 | Shortcut | Action |
 |---|---|
-| ⌘N / ⌘T | New session |
-| ⌘⇧T | Theme editor |
+| ⌘N / ⌘T | New session (pick from recent closed sessions) |
+| ⌘⇧T | Reopen last closed session |
+| ⌘⇧Y | Theme editor |
 | ⌘, | Project settings |
 | ⌘P | Switch project |
 | ⌘O | Open folder |
 | ⌘B | Toggle sidebar |
-| ⌘F | Find in terminal |
-| ⌘⇧F | Search all sessions |
+| ⌘F | Find in session (Claude: full transcript) |
+| ⌘⇧F | Search all open sessions |
+| ⌘⇧H | Session history (reopen closed sessions) |
 | ⌘K | Clear terminal |
 | ⌘↓ | Scroll to bottom |
 | ⌘↑ | Scroll to top |
 | ⌘1-9 | Switch to session |
 | ⌘⇧= | Lighten theme |
 | ⌘⇧- | Darken theme |
+| ⌘R | Rename active session |
 | ⌘W | Close session |
+| ⌘⇧W | Close project window |
 
 ## Features
 
@@ -87,6 +91,18 @@ When you close a window or quit ForgeTerm, the state of all sessions is saved - 
 
 Claude Code sessions are automatically resumed with `claude -r {sessionId}`. You can configure extra args per project (like `--dangerously-skip-permissions`) by setting `claudeResumeArgs` in `.forgeterm.json` or via Project Settings.
 
+### Search & Session History
+
+Search any session with ⌘F, or every open session at once with ⌘⇧F. Claude Code renders full-screen (so its scrollback never reaches the terminal), so ForgeTerm searches the conversation's on-disk transcript instead - you get the complete history, including what scrolled past. Other shells search their live scrollback as before.
+
+Press ⌘⇧H to browse this project's closed sessions. Filter by name or search inside past conversations, then Resume a Claude session (or Reopen any shell) in one click.
+
+Opening a new session with ⌘T also lists this project's recent closed sessions right in the modal, sorted by when they closed or opened - click any one to reopen it, or ⌘⇧T to reopen the most recent.
+
+### Session Activity Indicators
+
+Each session shows its live state at a glance in the sidebar. A spinner appears while Claude Code is working, and a colored dot flags a session that needs your attention or finished while you were looking elsewhere. Visiting the session clears the dot, so you always know which windows are waiting on you across a busy multi-project workspace.
+
 ### Import from Project Manager
 
 Already using the VS Code Project Manager extension? Import all your projects in one click. ForgeTerm auto-detects installed editors (VS Code, Cursor, Windsurf, VSCodium) and reads their Project Manager data directly.
@@ -127,11 +143,25 @@ ForgeTerm ships with a command-line tool that communicates with the running app 
 ft notify "Build complete"              # Native macOS notification
 ft rename "Refactoring auth"            # Rename current session
 ft close                                # Close the current session (like ⌘W)
+ft start "fix login" -p "Fix auth bug"  # Start a session (Claude with a prompt)
 ft info --title "..." --summary "..."   # Update session info card
 ft open ~/projects/my-app               # Open a project
 ft list                                 # List recent projects
 ft open-workspace ~/projects            # Open folder as workspace
 ```
+
+**Start a session with `ft start`:**
+
+`ft start` launches a new live session in a project, opening its window if needed. Great for spinning up a Claude Code task from anywhere:
+
+```bash
+ft start "dev" --command "npm run dev"   # Named session running a command
+ft start --claude                        # New Claude Code session
+ft start "fix login" -p "Fix the auth bug in login.ts"   # Claude with an initial prompt
+ft start review -p "Review the diff" --project ~/code/app  # Target another project
+```
+
+It resolves the project's configured Claude CLI (name and skip-permissions setting). Add `--idle` to create the session without starting it.
 
 **Full command reference:**
 

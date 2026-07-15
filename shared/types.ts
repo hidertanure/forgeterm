@@ -182,6 +182,8 @@ export interface HistoricalSession {
   createdAt: number
   endedAt?: number
   info?: SessionContext
+  /** Claude conversation id, when the session ran Claude - enables resume on reopen. */
+  conversationId?: string
 }
 
 export interface SessionHistoryFilter {
@@ -189,6 +191,34 @@ export interface SessionHistoryFilter {
   projectPath?: string
   query?: string
   maxAgeDays?: number
+}
+
+// --- Claude transcript search ---------------------------------------------
+
+/** One conversation to search on disk (open session or a closed/historical one). */
+export interface TranscriptSearchTarget {
+  /** Session id (open) or historical-session id - echoed back to group results. */
+  id: string
+  conversationId: string
+  projectPath: string
+}
+
+/** A single match within a Claude transcript (a message/tool segment). */
+export interface TranscriptMatch {
+  role: 'user' | 'assistant'
+  kind: 'text' | 'thinking' | 'tool_use' | 'tool_result'
+  /** Single-line preview windowed around the match. */
+  preview: string
+  /** Match offset within `preview`. */
+  col: number
+  /** Line index in the JSONL transcript (ordering / identity). */
+  msgIndex: number
+  timestamp?: number
+}
+
+export interface TranscriptSearchResult {
+  id: string
+  matches: TranscriptMatch[]
 }
 
 export interface DashboardSession {
@@ -263,6 +293,14 @@ export interface SessionStatusReport {
   status: SessionActivityStatus
 }
 
+// A live session requested via the `ft start` CLI command, queued by the main
+// process until the target window's renderer picks it up.
+export interface PendingSessionStart {
+  name: string
+  command?: string
+  idle?: boolean
+}
+
 export interface ForgeTermAPI {
   createSession: (name: string, command?: string, idle?: boolean, nameLocked?: boolean) => Promise<string>
   killSession: (id: string) => Promise<void>
@@ -284,6 +322,7 @@ export interface ForgeTermAPI {
   onOpenThemeEditor: (callback: () => void) => () => void
   onOpenProjectSettings: (callback: () => void) => () => void
   onOpenProjectSwitcher: (callback: () => void) => () => void
+  onReopenLastClosed: (callback: () => void) => () => void
   getRecentProjects: () => Promise<RecentProject[]>
   openProject: (projectPath: string) => Promise<void>
   getWorkspaces: () => Promise<Workspace[]>
@@ -306,6 +345,7 @@ export interface ForgeTermAPI {
   getSessionHistory: (projectPath?: string) => Promise<HistoricalSession[]>
   searchSessionHistory: (filter: SessionHistoryFilter) => Promise<HistoricalSession[]>
   deleteOldSessions: (maxAgeDays: number) => Promise<number>
+  searchTranscripts: (targets: TranscriptSearchTarget[], query: string, perTargetLimit?: number) => Promise<TranscriptSearchResult[]>
   getDashboardState: () => Promise<DashboardState>
   onDashboardStateChanged: (callback: (state: DashboardState) => void) => () => void
   deleteWorkspace: (workspaceName: string) => Promise<void>
@@ -365,4 +405,6 @@ export interface ForgeTermAPI {
   getClaudeSetupPrompt: () => Promise<string>
   getClaudeLaunch: () => Promise<ClaudeLaunch>
   closeWindow: () => void
+  takePendingStarts: () => Promise<PendingSessionStart[]>
+  onFlushPendingStarts: (callback: () => void) => () => void
 }

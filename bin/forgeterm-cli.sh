@@ -346,6 +346,59 @@ cmd_open_workspace() {
   check_response "$response" true && echo "Opened workspace from $abs_path" || exit 1
 }
 
+cmd_start() {
+  local name="" command="" prompt="" project_path="" use_claude=false idle=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -c|--command) shift; command="$1" ;;
+      --claude) use_claude=true ;;
+      -p|--prompt) shift; prompt="$1"; use_claude=true ;;
+      --project) shift; project_path="$1" ;;
+      --idle) idle=true ;;
+      -h|--help)
+        cat <<'USAGE'
+Usage: ft start [name] [options]
+
+Start a new live session in a project, opening its window if needed.
+
+Options:
+  -c, --command "cmd"   Run this command in the new session
+      --claude          Launch Claude in the new session
+  -p, --prompt "text"   Launch Claude with an initial prompt (implies --claude)
+      --project <path>  Project to start in (default: current session or cwd)
+      --idle            Create the session stopped (don't run the command yet)
+
+Examples:
+  ft start                                   New shell session
+  ft start "dev" --command "npm run dev"     Named session running a command
+  ft start --claude                          New Claude session
+  ft start "fix login" -p "Fix the login bug in auth.ts"
+  ft start review -p "Review the diff" --project ~/code/app
+USAGE
+        exit 0 ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *) name="$1" ;;
+    esac
+    shift
+  done
+
+  # Inside a ForgeTerm session, default to its project; otherwise the cwd.
+  [ -z "$project_path" ] && project_path="${FORGETERM_PROJECT_PATH:-$PWD}"
+  project_path=$(resolve_project_path "$project_path") || exit 1
+
+  local json="{\"command\":\"start-session\",\"projectPath\":$(json_string "$project_path")"
+  [ -n "$name" ] && json+=",\"name\":$(json_string "$name")"
+  [ -n "$command" ] && json+=",\"runCommand\":$(json_string "$command")"
+  [ "$use_claude" = true ] && json+=",\"claude\":true"
+  [ -n "$prompt" ] && json+=",\"prompt\":$(json_string "$prompt")"
+  [ "$idle" = true ] && json+=",\"idle\":true"
+  json+="}"
+
+  local response
+  response=$(send_to_socket "$json") || exit 1
+  check_response "$response" true && echo "Started session in $project_path" || exit 1
+}
+
 cmd_list() {
   local json_output=false
   while [ $# -gt 0 ]; do
@@ -463,7 +516,7 @@ cmd_session() {
       if [ -z "$name" ]; then echo "Usage: ft session add <name>" >&2; exit 1; fi
       project_path=$(resolve_project_path "$project_path") || exit 1
       local json="{\"command\":\"session-add\",\"name\":$(json_string "$name"),\"projectPath\":$(json_string "$project_path")"
-      [ -n "$command" ] && json+=",\"command\":$(json_string "$command")"
+      [ -n "$command" ] && json+=",\"runCommand\":$(json_string "$command")"
       [ "$auto_start" = "true" ] && json+=",\"autoStart\":true"
       [ "$auto_start" = "false" ] && json+=",\"autoStart\":false"
       json+="}"
@@ -812,6 +865,7 @@ Direct commands:
   conversation <id>       Link session to a Claude conversation ID
   activity <state>        Report working state (working|done|attention|idle)
   open [path]             Open a project
+  start [name]            Start a new live session (--claude, -p "prompt", -c "cmd")
   open-workspace [path]   Open folder as workspace
   list [--json]           List recent projects
 
@@ -838,6 +892,7 @@ case "${1:-}" in
   conversation) shift; cmd_conversation "$@" ;;
   activity)  shift; cmd_activity "$@" ;;
   open)      shift; cmd_open "$@" ;;
+  start)     shift; cmd_start "$@" ;;
   list)      shift; cmd_list "$@" ;;
   dashboard) send_command '{"command":"dashboard"}' ;;
   open-workspace) shift; cmd_open_workspace "$@" ;;

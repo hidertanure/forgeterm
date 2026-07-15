@@ -1,33 +1,54 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from 'react'
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react'
 import type { Session } from '../store/sessionStore'
+import type { TranscriptMatch } from '../../shared/types'
 import { searchAllTerminals, getSessionLastOutput } from './TerminalView'
 
 interface GlobalSearchProps {
   sessions: Session[]
   accentColor: string
+  projectPath: string
+  /** 'all' searches every open session; a session id scopes to that one (Cmd+F on a Claude session). */
+  scope: 'all' | string
   onReveal: (sessionId: string, line: number, col: number, length: number) => void
   onClose: () => void
 }
 
-const MAX_PER_SESSION = 6
+const MAX_PER_SESSION = 8
 
-interface Match {
+// A match in a live terminal buffer (non-Claude session) - reveal-able in place.
+interface TerminalMatch {
+  source: 'terminal'
   line: number
   col: number
   preview: string
 }
 
+// A match in a Claude transcript on disk - shown inline (Claude can't be scrolled).
+interface DiskMatch extends TranscriptMatch {
+  source: 'transcript'
+}
+
+type Match = TerminalMatch | DiskMatch
+
 interface Group {
   sessionId: string
   sessionName: string
+  isClaude: boolean
   matches: Match[]
   total: number
+  recency: number
 }
 
 interface FlatRow {
   sessionId: string
-  line: number
-  col: number
+  match: Match
+}
+
+const ROLE_LABEL: Record<string, string> = {
+  text: 'message',
+  thinking: 'thinking',
+  tool_use: 'tool',
+  tool_result: 'output',
 }
 
 // Render a one-line preview windowed around the match, with the matched term
@@ -46,63 +67,117 @@ function Snippet({ preview, col, length }: { preview: string; col: number; lengt
   )
 }
 
-export function GlobalSearch({ sessions, accentColor, onReveal, onClose }: GlobalSearchProps) {
+// Full (un-windowed) preview with the match highlighted - shown when a transcript
+// row is expanded, since we can't scroll Claude's own viewport to the match.
+function FullSnippet({ preview, col, length }: { preview: string; col: number; length: number }) {
+  return (
+    <span>
+      {preview.slice(0, col)}
+      <mark className="global-search-match">{preview.slice(col, col + length)}</mark>
+      {preview.slice(col + length)}
+    </span>
+  )
+}
+
+export function GlobalSearch({ sessions, accentColor, projectPath, scope, onReveal, onClose }: GlobalSearchProps) {
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [groups, setGroups] = useState<Group[]>([])
   const [selected, setSelected] = useState(0)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const inputRef = useRef<HTMLInputElement>(null)
   const selectedRef = useRef<HTMLButtonElement>(null)
 
+  const targets = scope === 'all' ? sessions : sessions.filter((s) => s.id === scope)
+  const scopedName = scope === 'all' ? null : targets[0]?.name
+
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  // Debounce before scanning buffers - the scan is synchronous over scrollback.
+  // Debounce: terminal scan is synchronous, transcript search hits disk in main.
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 120)
+    const t = setTimeout(() => setDebounced(query.trim()), 130)
     return () => clearTimeout(t)
   }, [query])
 
-  const groups = useMemo<Group[]>(() => {
-    if (!debounced) return []
+  // Run the (async) search whenever the debounced query or session set changes.
+  // A request token guards against out-of-order transcript responses.
+  useEffect(() => {
+    if (!debounced) { setGroups([]); return }
+    let cancelled = false
     const order = new Map(sessions.map((s, i) => [s.id, i]))
     const nameOf = new Map(sessions.map((s) => [s.id, s.name]))
-    const raw = searchAllTerminals(debounced)
-    const result: Group[] = []
-    for (const [sessionId, matches] of raw) {
-      result.push({
+    const claudeIds = new Set(targets.filter((s) => s.conversationId).map((s) => s.id))
+    const inScope = new Set(targets.map((s) => s.id))
+
+    // 1. Terminal-buffer matches for non-Claude in-scope sessions (synchronous).
+    const termGroups: Group[] = []
+    for (const [sessionId, matches] of searchAllTerminals(debounced)) {
+      if (!inScope.has(sessionId) || claudeIds.has(sessionId)) continue
+      termGroups.push({
         sessionId,
         sessionName: nameOf.get(sessionId) ?? 'session',
-        matches: matches.slice(0, MAX_PER_SESSION).map((m) => ({ line: m.line, col: m.col, preview: m.preview })),
+        isClaude: false,
+        matches: matches.slice(0, MAX_PER_SESSION).map((m) => ({ source: 'terminal', line: m.line, col: m.col, preview: m.preview })),
         total: matches.length,
+        recency: getSessionLastOutput(sessionId),
       })
     }
-    // Rank sessions by most-recent output, then by sidebar order. Matches within
-    // a session are already most-recent-first (searchAllTerminals scans bottom-up).
-    result.sort((a, b) => {
-      const ra = getSessionLastOutput(a.sessionId)
-      const rb = getSessionLastOutput(b.sessionId)
-      if (rb !== ra) return rb - ra
-      return (order.get(a.sessionId) ?? 0) - (order.get(b.sessionId) ?? 0)
-    })
-    return result
-  }, [debounced, sessions])
 
-  const flat = useMemo<FlatRow[]>(() => {
-    const rows: FlatRow[] = []
-    for (const g of groups) {
-      for (const m of g.matches) rows.push({ sessionId: g.sessionId, line: m.line, col: m.col })
+    // 2. Transcript matches for Claude sessions (async, on disk in main process).
+    const transcriptTargets = targets
+      .filter((s) => s.conversationId)
+      .map((s) => ({ id: s.id, conversationId: s.conversationId as string, projectPath }))
+
+    const finish = (diskGroups: Group[]) => {
+      if (cancelled) return
+      const merged = [...termGroups, ...diskGroups]
+      merged.sort((a, b) => {
+        if (b.recency !== a.recency) return b.recency - a.recency
+        return (order.get(a.sessionId) ?? 0) - (order.get(b.sessionId) ?? 0)
+      })
+      setGroups(merged)
     }
-    return rows
-  }, [groups])
 
-  // Reset selection whenever the result set changes.
+    if (transcriptTargets.length === 0) {
+      finish([])
+    } else {
+      window.forgeterm.searchTranscripts(transcriptTargets, debounced, MAX_PER_SESSION).then((results) => {
+        const diskGroups: Group[] = results.map((r) => ({
+          sessionId: r.id,
+          sessionName: nameOf.get(r.id) ?? 'session',
+          isClaude: true,
+          matches: r.matches.map((m) => ({ source: 'transcript' as const, ...m })),
+          total: r.matches.length,
+          recency: Math.max(getSessionLastOutput(r.id), ...r.matches.map((m) => m.timestamp ?? 0)),
+        }))
+        finish(diskGroups)
+      }).catch(() => finish([]))
+    }
+
+    return () => { cancelled = true }
+  }, [debounced, sessions, scope, projectPath])
+
+  const flat: FlatRow[] = []
+  for (const g of groups) for (const m of g.matches) flat.push({ sessionId: g.sessionId, match: m })
+
   useEffect(() => { setSelected(0) }, [flat.length])
+  useEffect(() => { selectedRef.current?.scrollIntoView({ block: 'nearest' }) }, [selected])
 
-  useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [selected])
+  const rowKey = (sessionId: string, m: Match) =>
+    m.source === 'terminal' ? `${sessionId}:t:${m.line}:${m.col}` : `${sessionId}:c:${m.msgIndex}:${m.col}`
 
-  const revealRow = useCallback((row: FlatRow) => {
-    onReveal(row.sessionId, row.line, row.col, debounced.length)
+  const activateRow = useCallback((row: FlatRow) => {
+    if (row.match.source === 'terminal') {
+      onReveal(row.sessionId, row.match.line, row.match.col, debounced.length)
+    } else {
+      // Transcript match: toggle inline expansion (no terminal to scroll to).
+      const key = rowKey(row.sessionId, row.match)
+      setExpanded((prev) => {
+        const next = new Set(prev)
+        next.has(key) ? next.delete(key) : next.add(key)
+        return next
+      })
+    }
   }, [onReveal, debounced])
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -112,9 +187,9 @@ export function GlobalSearch({ sessions, accentColor, onReveal, onClose }: Globa
     if (e.key === 'Enter') {
       e.preventDefault()
       const row = flat[selected]
-      if (row) revealRow(row)
+      if (row) activateRow(row)
     }
-  }, [flat, selected, revealRow, onClose])
+  }, [flat, selected, activateRow, onClose])
 
   // Prefix-sum offsets so each rendered match knows its flat-list index.
   const offsets: number[] = []
@@ -135,7 +210,7 @@ export function GlobalSearch({ sessions, accentColor, onReveal, onClose }: Globa
             ref={inputRef}
             className="global-search-input"
             type="text"
-            placeholder="Search all open sessions..."
+            placeholder={scopedName ? `Search “${scopedName}”…` : 'Search all open sessions…'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -145,7 +220,11 @@ export function GlobalSearch({ sessions, accentColor, onReveal, onClose }: Globa
 
         <div className="global-search-results">
           {!debounced && (
-            <div className="global-search-empty">Type to search the scrollback of every open session.</div>
+            <div className="global-search-empty">
+              {scopedName
+                ? `Search the full conversation of “${scopedName}”.`
+                : 'Search every open session - full Claude history, plus other shells’ scrollback.'}
+            </div>
           )}
           {debounced && flat.length === 0 && (
             <div className="global-search-empty">No matches for &ldquo;{debounced}&rdquo;.</div>
@@ -154,21 +233,31 @@ export function GlobalSearch({ sessions, accentColor, onReveal, onClose }: Globa
             <div className="global-search-group" key={g.sessionId}>
               <div className="global-search-group-header">
                 <span className="global-search-group-name">{g.sessionName}</span>
-                <span className="global-search-group-count">{g.total} match{g.total === 1 ? '' : 'es'}</span>
+                {g.isClaude && <span className="global-search-group-tag">transcript</span>}
+                <span className="global-search-group-count">{g.total}{g.total >= MAX_PER_SESSION ? '+' : ''} match{g.total === 1 ? '' : 'es'}</span>
               </div>
               {g.matches.map((m, j) => {
                 const idx = offsets[gi] + j
                 const isSel = idx === selected
+                const key = rowKey(g.sessionId, m)
+                const isExpanded = m.source === 'transcript' && expanded.has(key)
                 return (
                   <button
-                    key={`${g.sessionId}-${m.line}-${j}`}
+                    key={key}
                     ref={isSel ? selectedRef : undefined}
-                    className={`global-search-result${isSel ? ' selected' : ''}`}
+                    className={`global-search-result${isSel ? ' selected' : ''}${m.source === 'transcript' ? ' transcript' : ''}`}
                     style={isSel ? { borderColor: accentColor } : undefined}
-                    onClick={() => revealRow({ sessionId: g.sessionId, line: m.line, col: m.col })}
+                    onClick={() => activateRow({ sessionId: g.sessionId, match: m })}
                     onMouseEnter={() => setSelected(idx)}
                   >
-                    <Snippet preview={m.preview} col={m.col} length={debounced.length} />
+                    {m.source === 'transcript' && (
+                      <span className={`global-search-roletag role-${m.role} kind-${m.kind}`}>
+                        {m.role === 'user' ? 'you' : ROLE_LABEL[m.kind] ?? 'claude'}
+                      </span>
+                    )}
+                    {isExpanded
+                      ? <span className="global-search-snippet expanded"><FullSnippet preview={m.preview} col={m.col} length={debounced.length} /></span>
+                      : <Snippet preview={m.preview} col={m.col} length={debounced.length} />}
                   </button>
                 )
               })}

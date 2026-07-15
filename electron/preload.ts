@@ -88,6 +88,12 @@ const api: ForgeTermAPI = {
     return () => { ipcRenderer.removeListener('menu:open-project-switcher', handler) }
   },
 
+  onReopenLastClosed: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('menu:reopen-last-closed', handler)
+    return () => { ipcRenderer.removeListener('menu:reopen-last-closed', handler) }
+  },
+
   getRecentProjects: () =>
     ipcRenderer.invoke('projects:get-recent'),
 
@@ -147,6 +153,9 @@ const api: ForgeTermAPI = {
 
   deleteOldSessions: (maxAgeDays: number) =>
     ipcRenderer.invoke('session-history:delete-old', maxAgeDays),
+
+  searchTranscripts: (targets: { id: string; conversationId: string; projectPath: string }[], query: string, perTargetLimit?: number) =>
+    ipcRenderer.invoke('transcript:search', targets, query, perTargetLimit),
 
   getDashboardState: () =>
     ipcRenderer.invoke('dashboard:get-state'),
@@ -277,6 +286,15 @@ const api: ForgeTermAPI = {
       callback(sessionId)
     ipcRenderer.on('notification:focus-session', handler)
     return () => { ipcRenderer.removeListener('notification:focus-session', handler) }
+  },
+
+  takePendingStarts: () =>
+    ipcRenderer.invoke('session:take-pending-starts'),
+
+  onFlushPendingStarts: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('cli:flush-pending-starts', handler)
+    return () => { ipcRenderer.removeListener('cli:flush-pending-starts', handler) }
   },
 
   readFileContent: (filePath: string) =>

@@ -5,7 +5,8 @@ import fs from 'node:fs'
 import { execSync, execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PtyManager } from './ptyManager'
-import type { ForgeTermConfig, RecentProject, Workspace, ImportResult, FavoriteTheme, DetectedEditor, UpdateInfo, SessionTemplate, SessionStatusReport, SavedSession, SavedWindowState, SessionContext, HistoricalSession, SessionHistoryFilter, DashboardState, DashboardProject, DashboardSession, DashboardWorkspace } from '../shared/types'
+import type { ForgeTermConfig, RecentProject, Workspace, ImportResult, FavoriteTheme, DetectedEditor, UpdateInfo, SessionTemplate, SessionStatusReport, SavedSession, SavedWindowState, SessionContext, HistoricalSession, SessionHistoryFilter, DashboardState, DashboardProject, DashboardSession, DashboardWorkspace, TranscriptSearchTarget } from '../shared/types'
+import { searchTranscripts } from './claudeTranscript'
 import crypto from 'node:crypto'
 import { UpdateManager } from './updater'
 import { NotificationServer, getSocketPath, type CommandHandler } from './notificationServer'
@@ -59,6 +60,16 @@ interface WindowActivityInfo {
   sessions: SessionStatusReport[]
 }
 const windowActivities = new Map<number, WindowActivityInfo>()
+
+// Sessions requested via `ft start`, keyed by resolved project path. The renderer
+// drains its window's queue on load / when opened / when flushed, so this works
+// whether the target window already existed or was created to service the request.
+const pendingStarts = new Map<string, import('../shared/types').PendingSessionStart[]>()
+
+// Wrap a string as a single shell argument (POSIX single-quoting).
+function shellSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
 
 function getFavoriteThemesPath(): string {
   return path.join(app.getPath('userData'), 'favorite-themes.json')
@@ -241,6 +252,49 @@ function buildCliHandlers(): Map<string, CommandHandler> {
     return { ok: true }
   })
 
+  // Start a new LIVE session in a project (opening/focusing its window first).
+  // Unlike `session-add` (which only edits saved config), this spawns a running
+  // terminal now. With `claude`/`prompt` it launches the project's resolved
+  // Claude CLI, optionally seeded with an initial prompt.
+  handlers.set('start-session', (p) => {
+    const projectPath = p.projectPath as string
+    if (!projectPath) return { ok: false, error: 'Missing projectPath' }
+    const resolved = path.resolve(projectPath)
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      return { ok: false, error: `Not a directory: ${resolved}` }
+    }
+
+    const prompt = typeof p.prompt === 'string' && p.prompt ? p.prompt : undefined
+    const useClaude = p.claude === true || prompt !== undefined
+    // `runCommand`, not `command`: the socket envelope already uses `command`
+    // for the RPC verb, so a second `command` key would clobber it on parse.
+    let command = (p.runCommand as string | undefined) || undefined
+    if (useClaude) {
+      const launch = resolveClaudeLaunch(resolved)
+      const parts = [launch.cliName, ...launch.resumeArgs]
+      if (prompt) parts.push(shellSingleQuote(prompt))
+      command = parts.join(' ')
+    }
+
+    const name =
+      (p.name as string) ||
+      (useClaude ? 'Claude' : command ? command.trim().split(/\s+/)[0] : 'shell')
+    const idle = p.idle === true
+
+    const existed = !!findWindowForProject(resolved)
+    const queue = pendingStarts.get(resolved) ?? []
+    queue.push({ name, command, idle })
+    pendingStarts.set(resolved, queue)
+
+    const win = focusOrCreateWindow(resolved)
+    // A pre-existing window already ran its init, so nudge it to drain the queue.
+    // A freshly created one drains it as part of its own initialization.
+    if (existed && win && !win.isDestroyed()) {
+      win.webContents.send('cli:flush-pending-starts')
+    }
+    return { ok: true, data: { name } }
+  })
+
   // --- Project commands ---
 
   handlers.set('project-list', (p) => {
@@ -283,7 +337,8 @@ function buildCliHandlers(): Map<string, CommandHandler> {
   handlers.set('session-add', (p) => {
     const projectPath = p.projectPath as string
     const name = p.name as string
-    const command = p.command as string | undefined
+    // `runCommand`: the envelope's `command` field is the RPC verb (see start-session).
+    const command = p.runCommand as string | undefined
     const autoStart = p.autoStart as boolean | undefined
     if (!projectPath || !name) return { ok: false, error: 'Missing projectPath or name' }
     const resolved = path.resolve(projectPath)
@@ -1431,6 +1486,7 @@ function createProjectWindow(projectPath: string | null) {
             createdAt: session.createdAt,
             endedAt: Date.now(),
             info: session.info,
+            conversationId: session.conversationId,
           })
         }
       }
@@ -1879,6 +1935,14 @@ function setupIpcHandlers() {
     return id
   })
 
+  ipcMain.handle('session:take-pending-starts', (event) => {
+    const state = getStateForEvent(event)
+    if (!state?.projectPath) return []
+    const queue = pendingStarts.get(state.projectPath) ?? []
+    pendingStarts.delete(state.projectPath)
+    return queue
+  })
+
   ipcMain.handle('session:kill', (event, id: string) => {
     getStateForEvent(event)?.ptyManager.kill(id)
   })
@@ -2235,6 +2299,10 @@ function setupIpcHandlers() {
 
   ipcMain.handle('session-history:delete-old', (_event, maxAgeDays: number) => {
     return cleanupOldHistory(maxAgeDays)
+  })
+
+  ipcMain.handle('transcript:search', (_event, targets: TranscriptSearchTarget[], query: string, perTargetLimit?: number) => {
+    return searchTranscripts(targets ?? [], query ?? '', perTargetLimit)
   })
 
   ipcMain.handle('import:vscode-projects', async () => {
@@ -2668,7 +2736,25 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('session:delete', (event, id: string) => {
-    getStateForEvent(event)?.ptyManager.removeSession(id)
+    const state = getStateForEvent(event)
+    // Save to history before killing, so a closed session can be reopened/resumed.
+    if (state?.projectPath) {
+      const session = state.ptyManager.getSession(id)
+      if (session) {
+        appendToHistory(state.projectPath, {
+          id: session.id,
+          name: session.name,
+          command: session.command,
+          projectPath: state.projectPath,
+          workspace: getWorkspaceForProject(state.projectPath),
+          createdAt: session.createdAt,
+          endedAt: Date.now(),
+          info: session.info,
+          conversationId: session.conversationId,
+        })
+      }
+    }
+    state?.ptyManager.removeSession(id)
     const win = BrowserWindow.fromWebContents(event.sender)
     if (win) schedulePersist(win.id)
   })
@@ -2887,6 +2973,14 @@ function buildMenu() {
             if (win) win.webContents.send('menu:new-session')
           },
         },
+        {
+          label: 'Reopen Closed Session',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('menu:reopen-last-closed')
+          },
+        },
         { type: 'separator' },
         {
           label: 'Open Folder...',
@@ -2938,7 +3032,7 @@ function buildMenu() {
       submenu: [
         {
           label: 'Theme Editor...',
-          accelerator: 'CmdOrCtrl+Shift+T',
+          accelerator: 'CmdOrCtrl+Shift+Y',
           click: () => {
             const win = BrowserWindow.getFocusedWindow()
             if (win) win.webContents.send('menu:open-theme-editor')

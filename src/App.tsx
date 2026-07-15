@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { TerminalView, clearTerminal, scrollTerminalToTop, scrollTerminalToBottom, selectAllTerminal, toggleTerminalSearch, revealTerminalMatch } from './components/TerminalView'
 import { GlobalSearch } from './components/GlobalSearch'
+import { ProjectHistory } from './components/ProjectHistory'
 import { NewSessionModal } from './components/NewSessionModal'
 import { ThemeEditor } from './components/ThemeEditor'
 import { ProjectSettings } from './components/ProjectSettings'
@@ -14,7 +15,7 @@ import { Dashboard } from './components/Dashboard'
 import { UpdateBanner } from './components/UpdateBanner'
 import { ClaudeConnectionBanner } from './components/ClaudeConnectionBanner'
 import { useSessionStore } from './store/sessionStore'
-import type { ForgeTermConfig, CliStatus, ClaudeLaunch } from '../shared/types'
+import type { ForgeTermConfig, CliStatus, ClaudeLaunch, HistoricalSession } from '../shared/types'
 import type { WindowTheme } from './themes'
 import { generateWindowTheme, adjustAccentBrightness, getTerminalTheme } from './themes'
 import './App.css'
@@ -47,6 +48,9 @@ function App() {
   const [showCliPrompt, setShowCliPrompt] = useState(false)
   const [showRemoteAccess, setShowRemoteAccess] = useState(false)
   const [showGlobalSearch, setShowGlobalSearch] = useState(false)
+  const [globalSearchScope, setGlobalSearchScope] = useState<'all' | string>('all')
+  const [showHistory, setShowHistory] = useState(false)
+  const [projectPath, setProjectPath] = useState('')
   const [infoPanelSessionId, setInfoPanelSessionId] = useState<string | null>(null)
   const [remoteRunning, setRemoteRunning] = useState(false)
   const [cliStatus, setCliStatus] = useState<CliStatus>('not-setup')
@@ -78,6 +82,19 @@ function App() {
     }
   }, [addSession])
 
+  // Drain any sessions queued by the `ft start` CLI for this window and focus the
+  // last one. Runs after initial sessions are set up, and whenever main flushes.
+  const consumePendingStarts = useCallback(async () => {
+    const pending = await window.forgeterm.takePendingStarts()
+    for (const req of pending) {
+      const id = await window.forgeterm.createSession(req.name, req.command, req.idle)
+      if (id) {
+        addSession({ id, name: req.name, command: req.command, running: !req.idle })
+        setActive(id)
+      }
+    }
+  }, [addSession, setActive])
+
   // Initialize
   useEffect(() => {
     if (initializedRef.current) return
@@ -101,6 +118,7 @@ function App() {
 
       setConfig(projectConfig)
       setClaudeLaunch(launch)
+      if (projectPath) setProjectPath(projectPath)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
       const folder = projectPath?.split('/').pop() || 'ForgeTerm'
@@ -144,6 +162,7 @@ function App() {
         }
 
         await window.forgeterm.clearSavedSessions()
+        await consumePendingStarts()
         return
       }
 
@@ -162,6 +181,8 @@ function App() {
       } else {
         await createSession('shell')
       }
+
+      await consumePendingStarts()
     }
 
     init()
@@ -276,6 +297,13 @@ function App() {
     })
   }, [setActive])
 
+  // Start sessions requested via `ft start` while this window is already open.
+  useEffect(() => {
+    return window.forgeterm.onFlushPendingStarts(() => {
+      consumePendingStarts()
+    })
+  }, [consumePendingStarts])
+
   // When a project is opened in a welcome window, reinitialize
   useEffect(() => {
     return window.forgeterm.onProjectOpened(async () => {
@@ -291,6 +319,7 @@ function App() {
       ])
       setConfig(projectConfig)
       setClaudeLaunch(launch)
+      if (projectPath) setProjectPath(projectPath)
       if (savedSidebarMode) setSidebarMode(savedSidebarMode)
       if (savedSidebarWidth) setSidebarWidth(savedSidebarWidth)
       const folder = projectPath?.split('/').pop() || 'ForgeTerm'
@@ -337,6 +366,8 @@ function App() {
       } else {
         await createSession('shell')
       }
+
+      await consumePendingStarts()
     })
   }, [createSession, addSession])
 
@@ -396,8 +427,9 @@ function App() {
         setShowModal(true)
       }
 
-      // Cmd+Shift+T: theme editor
-      if (mod && e.shiftKey && e.key === 'T') {
+      // Cmd+Shift+Y: theme editor (Cmd+Shift+T now reopens the last closed
+      // session, Chrome-style, handled by the app-menu accelerator).
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'y') {
         e.preventDefault()
         setShowThemeEditor(true)
       }
@@ -422,18 +454,33 @@ function App() {
         }
       }
 
-      // Cmd+F: search in terminal
+      // Cmd+F: search the active session. Claude renders full-screen (alt buffer,
+      // no scrollback), so search its on-disk transcript via the unified panel;
+      // other shells keep the in-terminal buffer search bar.
       if (mod && !e.shiftKey && e.key === 'f') {
         e.preventDefault()
         if (activeSessionId) {
-          toggleTerminalSearch(activeSessionId)
+          const s = useSessionStore.getState().sessions.find((x) => x.id === activeSessionId)
+          if (s?.conversationId) {
+            setGlobalSearchScope(activeSessionId)
+            setShowGlobalSearch(true)
+          } else {
+            toggleTerminalSearch(activeSessionId)
+          }
         }
       }
 
       // Cmd+Shift+F: search across all open sessions
       if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
+        setGlobalSearchScope('all')
         setShowGlobalSearch(true)
+      }
+
+      // Cmd+Shift+H: browse this project's session history (reopen closed sessions)
+      if (mod && e.shiftKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault()
+        setShowHistory(true)
       }
 
       // Cmd+W: delete active session
@@ -515,6 +562,7 @@ function App() {
         setShowCliInstall(false)
         setShowRemoteAccess(false)
         setShowGlobalSearch(false)
+        setShowHistory(false)
         setInfoPanelSessionId(null)
       }
     }
@@ -553,6 +601,40 @@ function App() {
     }
     setInfoPanelSessionId(null)
   }, [claudeLaunch, addSession, setActive])
+
+  // Reopen a closed/historical session as a new one. Claude sessions resume the
+  // conversation; other shells re-run their stored command.
+  const handleReopenHistorical = useCallback(async (h: HistoricalSession) => {
+    const command = h.conversationId ? buildResumeCommand(h.conversationId, claudeLaunch) : h.command
+    const id = await window.forgeterm.createSession(h.name, command)
+    if (id) {
+      addSession({ id, name: h.name, command, running: true, conversationId: h.conversationId })
+      setActive(id)
+    }
+    setShowHistory(false)
+    setShowModal(false)
+  }, [claudeLaunch, addSession, setActive])
+
+  // Reopen the single most-recently-closed session (Chrome-style Cmd+Shift+T).
+  // Picks the newest closed session for this project that isn't already open.
+  const handleReopenLastClosed = useCallback(async () => {
+    if (!projectPath) return
+    const openIds = new Set(
+      useSessionStore.getState().sessions.map((s) => s.conversationId).filter(Boolean) as string[],
+    )
+    const sessions = await window.forgeterm.getSessionHistory(projectPath)
+    let best: HistoricalSession | null = null
+    for (const s of sessions) {
+      if (s.conversationId && openIds.has(s.conversationId)) continue
+      if (!best || (s.endedAt ?? s.createdAt) > (best.endedAt ?? best.createdAt)) best = s
+    }
+    if (best) handleReopenHistorical(best)
+  }, [projectPath, handleReopenHistorical])
+
+  // Cmd+Shift+T (via the app menu accelerator) -> reopen last closed session.
+  useEffect(() => {
+    return window.forgeterm.onReopenLastClosed(() => handleReopenLastClosed())
+  }, [handleReopenLastClosed])
 
   // Resume a stopped session in place: starts it, running its stored resume command.
   const handleResumeInPlace = useCallback(async (sessionId: string) => {
@@ -628,7 +710,7 @@ function App() {
         <div className="titlebar-actions">
           <button
             className="titlebar-action-btn"
-            onClick={() => setShowGlobalSearch(true)}
+            onClick={() => { setGlobalSearchScope('all'); setShowGlobalSearch(true) }}
             title={`Search All Sessions (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}⇧F)`}
             style={{ background: 'rgba(255,255,255,0.1)', color: titlebarFg }}
           >
@@ -636,6 +718,18 @@ function App() {
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="4.5" />
               <line x1="10.5" y1="10.5" x2="14" y2="14" />
+            </svg>
+          </button>
+          <button
+            className="titlebar-action-btn"
+            onClick={() => setShowHistory(true)}
+            title={`Session History (${navigator.platform.includes('Mac') ? '⌘' : 'Ctrl+'}⇧H)`}
+            style={{ background: 'rgba(255,255,255,0.1)', color: titlebarFg }}
+          >
+            {/* Clock / history */}
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="8" r="6.5" />
+              <path d="M8 4.5V8l2.5 1.5" />
             </svg>
           </button>
           <button
@@ -771,7 +865,10 @@ function App() {
         <NewSessionModal
           accentColor={accentColor}
           presets={(config?.sessions || []).map((s) => ({ name: s.name, command: s.command }))}
+          projectPath={projectPath}
+          openConversationIds={sessions.map((s) => s.conversationId).filter(Boolean) as string[]}
           onSubmit={handleNewSession}
+          onReopen={handleReopenHistorical}
           onCancel={() => setShowModal(false)}
         />
       )}
@@ -834,8 +931,20 @@ function App() {
         <GlobalSearch
           sessions={sessions}
           accentColor={accentColor}
+          projectPath={projectPath}
+          scope={globalSearchScope}
           onReveal={handleRevealMatch}
           onClose={() => setShowGlobalSearch(false)}
+        />
+      )}
+
+      {showHistory && (
+        <ProjectHistory
+          projectPath={projectPath}
+          accentColor={accentColor}
+          openConversationIds={sessions.map((s) => s.conversationId).filter(Boolean) as string[]}
+          onReopen={handleReopenHistorical}
+          onClose={() => setShowHistory(false)}
         />
       )}
 
